@@ -12,7 +12,7 @@ It is intended for:
 It is not intended for:
 
 - committing commercial SDK packages directly into Git history;
-- storing customer license files or private deployment material;
+- storing customer license files or customer-specific deployment material;
 - publishing product installers or large binary packages in source directories.
 
 ## Repository Layout
