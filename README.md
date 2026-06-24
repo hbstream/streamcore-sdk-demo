@@ -18,9 +18,12 @@ It is not intended for:
 ## Repository Layout
 
 ```text
+android/              Android demo project placeholder.
+dotnet/               .NET / Windows desktop demo project placeholder.
+ios/                  iOS demo project placeholder.
+qt/                   Qt desktop demo project placeholder.
 docs/                 Demo usage notes and integration references.
-samples/              Small sample projects or source-only examples.
-assets/screenshots/   Public screenshots used by the README or docs.
+shared-assets/        Screenshots, icons, and media used by multiple demos.
 ```
 
 ## Download Policy
@@ -30,3 +33,10 @@ should stay small and reviewable.
 
 For SDK package downloads, use the official HBrun download page or the
 `hbstream/hbrun-downloads` release assets referenced by the public manifests.
+
+## Sync Policy
+
+Demo source is synced from the internal `streamcore_demo` workspace after a
+public export review. The export must not include internal SDK source, customer
+license files, private test addresses beyond local demo defaults, or generated
+build output.
