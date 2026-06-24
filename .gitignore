@@ -13,7 +13,7 @@ cmake-build-*/
 *.swp
 *.log
 
-# Large/generated packages should be GitHub Release assets, not Git files.
+# Large downloadable packages should be published as Release assets.
 *.zip
 *.7z
 *.rar
