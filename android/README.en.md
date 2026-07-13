@@ -1,52 +1,40 @@
-# StreamCore SDK Demo Android
+# StreamCore SDK Android Demo
 
-`streamcore_demo_android` is the standalone Android demo for StreamCore SDK and
-can be published as an independent GitHub repository.
+简体中文: [README.md](README.md)
 
-中文: [README.md](README.md)
+This directory contains the Android sample for StreamCore SDK. It covers playback, camera and microphone capture, publishing, GB28181, and license status. The sample uses only public Android APIs and the public `com.hbr.streamcore` SDK surface.
 
-## 2026-05-12 Release Gate Status
+## Prepare the SDK
 
-- The demo consumes only the public Android AAR facade.
-- The current gate refresh rebuilt the demo from the refreshed current SDK AAR,
-  passed Debug/Release/lint, installed on the device, and proved camera preview,
-  publisher preview, RTMP player, and RTMP publisher readback.
-- Android GB28181 video-media proof is closed for the current SRS camera and
-  video-file routes. GB28181 audio is not claimed because the SRS profile used
-  in this batch negotiated video-only SDP.
-- Speaker-output proof for Android player remains a separate proof item in the
-  root function matrix.
-
-## SDK Placement
-
-The Android project follows the normal Gradle / Android Studio local AAR
-convention:
+Download the Android SDK package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and place the AAR at:
 
 ```text
-streamcore_demo_android/
-  app/libs/streamcore-sdk.aar
+app/libs/streamcore-sdk.aar
 ```
 
-You may also set `STREAMCORE_DEMO_SDK_AAR` to an absolute AAR path. Public demo
-repositories should not commit `app/libs/*.aar`; delivery packages may
-prebundle the AAR so the project opens and builds directly.
+The public source repository does not contain the AAR or a production license. Runnable demo packages are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
 
 ## Build
 
+Windows:
+
 ```powershell
-cd streamcore_demo_android
 .\gradlew.bat :app:assembleDebug :app:lintDebug --console=plain --no-daemon
 ```
 
 Linux / macOS:
 
 ```bash
-cd streamcore_demo_android
 ./gradlew :app:assembleDebug :app:lintDebug --console=plain --no-daemon
 ```
 
-## Public Boundary
+With Android Studio, open this directory and wait for Gradle sync to finish.
 
-The app may use only the public `com.hbr.streamcore` SDK facade and normal
-Android framework APIs. It must not reference non-public SDK implementation
-files, signing secrets, generated license files, or machine-local paths.
+## Demo License
+
+The demo license is bound to this sample package name. It enables Standard and Professional evaluation features with an `hbrun.com` watermark. Changing the package name invalidates the demo license; production integration requires a commercial license for the target application identity.
+
+## Dependencies
+
+- Android Gradle Plugin, Kotlin/Java, and Android platform libraries.
+- The public SDK in `app/libs/streamcore-sdk.aar`.

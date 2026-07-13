@@ -1,48 +1,29 @@
-# StreamCore SDK Demo iOS
-
-`streamcore_demo_ios` 是 StreamCore SDK 的 Apple / iOS 示例目录，定位是可阅读、可迁移的正式调用样例。
+# StreamCore SDK iOS Demo
 
 English: [README.en.md](README.en.md)
 
-## SDK 放置方式
+本目录提供 iPhone / iPad Objective-C 示例，覆盖播放、采集、推流、授权状态与常用显示设置。示例只调用 `StreamCoreSDK.h` 公开接口和 Apple 系统框架。
 
-iOS / Xcode 工程按常见 `Frameworks` 目录放置 SDK framework：
+## 准备 SDK
+
+从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 iOS SDK，将 XCFramework 放入：
 
 ```text
-streamcore_demo_ios/
-  Frameworks/StreamCoreSDK.xcframework
+Frameworks/StreamCoreSDK.xcframework
 ```
 
-公开 GitHub 源码仓默认不提交 `Frameworks/StreamCoreSDK.xcframework`。交付包可以
-预先放好 framework，让用户在 Xcode 中直接把它加入 `Frameworks, Libraries, and Embedded Content`。
+公开源码仓库不包含 XCFramework 和正式授权文件。iOS 应用需要在 Xcode 中完成签名后安装到真机；源码可直接用于创建或集成 App Target。
 
-正式客户包包含 iOS 真机 slice；iOS Simulator 包只用于验证，不作为正式客户 release 包交付。
+## 生成 Xcode 工程
 
-## 当前内容
+在 macOS 上执行：
 
-- `StreamCoreDemoSample.m`
-  - 演示 runtime 配置、license 注册、日志配置、player / capture / publisher 的 preflight、
-    runtime info 和 start 调用。
-  - 只通过 `StreamCoreSDK.h` 的 Objective-C public surface 访问 SDK。
-- `StreamCoreDemoViewController.h/.m`
-  - 演示 iOS UIKit 分区界面、状态展示、日志分享、显示模式切换和 SDK 关键接口调用。
-  - 提供播放、采集、推流三组串行操作入口：预检、开始、停止；推流的编码喂流模式额外提供
-    样例包推送按钮。
-  - 通过 `NSBundle.mainBundle` 查找 demo license 和 public key。
-- `StreamCoreDemoAppDelegate.h/.m`、`StreamCoreDemoAppMain.m`、`StreamCoreDemoInfo.plist`
-  - 提供最小 iOS app 宿主，默认 bundle id 为 `com.hbr.streamcoredemo`。
-- `StreamCoreDemoLaunchScreen.storyboard`
-  - 提供最小 launch screen。
-- `Resources/`
-  - 随示例提供 `streamcore_demo.lic` 和 `streamcore_demo_public.pem`，需要加入 Xcode target 的
-    `Copy Bundle Resources`。
+```bash
+cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS
+open build-ios/streamcore_demo_ios.xcodeproj
+```
 
-## 编译方式
-
-### Xcode App Target
-
-创建 iOS app target，加入本目录源码文件，并 embed `Frameworks/StreamCoreSDK.xcframework`。需要复制到
-app bundle 的资源：
+默认 Bundle ID 为 `com.hbr.streamcoredemo`。请在 Xcode 中选择开发团队和目标设备，并确认以下资源已加入 App Target：
 
 ```text
 Resources/streamcore_demo.lic
@@ -50,31 +31,12 @@ Resources/streamcore_demo_public.pem
 StreamCoreDemoLaunchScreen.storyboard
 ```
 
-### CMake / Xcode Generator
+模拟器可用于查看界面、资源加载和基础接口状态；摄像头、麦克风、ReplayKit 与真实推流需要使用已签名的 iPhone 或 iPad 验证。
 
-根目录 `streamcore_demo/CMakeLists.txt` 和当前目录下的 `streamcore_demo_ios/CMakeLists.txt`
-现在都只消费 `Frameworks/StreamCoreSDK.xcframework`（或显式传入
-`STREAMCORE_DEMO_IOS_FRAMEWORK_ROOT`），不再依赖相邻 `streamcore_sdk` 源码树。
+## Demo 授权
 
-在 Mac 宿主上请使用 Xcode generator 和 iOS sysroot。维护中的 SDK 打包流程会自动刷新
-`Frameworks/StreamCoreSDK.xcframework`，因此 demo 构建和验证始终以打包产物为准。
+Demo 授权仅绑定默认示例 Bundle ID，用于体验 Standard 与 Professional 能力，并显示 `hbrun.com` 水印。更改 Bundle ID 后不能继续使用该授权。
 
-## 验证限制
+## 依赖
 
-Simulator 可以验证 app 启动、bundle 资源加载、license 状态和基础 UI wiring。摄像头、麦克风、
-ReplayKit 和真实推流必须在带签名和权限的 iOS 真机上验证。
-
-Simulator 环境可以用以下变量触发三组 session 预检：
-
-```bash
-SIMCTL_CHILD_STREAMCORE_DEMO_IOS_AUTORUN=preflight \
-  xcrun simctl launch booted com.hbr.streamcoredemo
-```
-
-该入口只执行播放、采集、推流的 configure/preflight，并把结果写入界面状态和
-`streamcore_demo.log`；真机上的 camera/microphone/ReplayKit/start/stop 仍应通过界面按钮验证。
-
-## 公开边界
-
-本示例只使用 `StreamCoreSDK.h` Objective-C 公开 wrapper 和 Apple 系统 framework，不引用
-非公开 SDK 实现文件、签名密钥、客户授权生成文件或本机私有路径。
+- Apple 系统框架与 `Frameworks/StreamCoreSDK.xcframework`。
