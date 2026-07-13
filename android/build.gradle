@@ -1,0 +1,15 @@
+plugins {
+    id 'com.android.application' version '8.5.2' apply false
+    id 'com.android.library' version '8.5.2' apply false
+}
+
+subprojects {
+    tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+        // Windows 宿主默认编码不可靠，这里强制统一为 UTF-8，避免 demo / sdk 中文字符串被编坏。
+        options.encoding = 'UTF-8'
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}

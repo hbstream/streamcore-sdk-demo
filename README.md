@@ -1,60 +1,62 @@
-# StreamCore SDK Demo
+﻿# StreamCore SDK Demo
 
 <p>
-  <a href="#中文说明">中文</a> |
-  <a href="#english">English</a>
+  <a href="#english">English</a> |
+  <a href="#简体中文">简体中文</a>
 </p>
-
-## 中文说明
-
-`streamcore-sdk-demo` 提供 HBRun StreamCore SDK 的公开 Demo 工程和集成示例，便于在桌面端、移动端和服务端场景中验证播放、采集、推流、录像和 GB28181 等能力。
-
-### 目录结构
-
-| 目录 | 内容 |
-| --- | --- |
-| `android/` | Android Demo 工程 |
-| `dotnet/` | .NET / Windows 桌面 Demo 工程 |
-| `ios/` | iOS Demo 工程 |
-| `qt/` | Qt C++ 桌面 Demo 工程，覆盖 Windows / Linux / macOS |
-| `docs/` | Demo 使用说明与集成说明 |
-| `shared-assets/` | README、截图和多个 Demo 共用的轻量资源 |
-
-### SDK 包与 Demo 包
-
-- StreamCore SDK 包通过 HBRun 官网和 `hbstream/hbrun-downloads` 的 Release 资产发布。
-- Demo 源码保持轻量，便于查看、下载和二次集成。
-- Demo 授权用于在 Demo 工程中验证 Standard / Professional 能力，不代表生产授权，也不能移动到其他进程或 App 中复用。
-
-### 相关链接
-
-- 官网下载页：[https://hbrun.com/downloads](https://hbrun.com/downloads)
-- StreamCore SDK 产品页：[https://hbrun.com/products/streamcore-sdk](https://hbrun.com/products/streamcore-sdk)
-- SDK 下载 Release：[hbstream/hbrun-downloads](https://github.com/hbstream/hbrun-downloads/releases/tag/streamcore-sdk-v1.3.2)
 
 ## English
 
-`streamcore-sdk-demo` provides public HBRun StreamCore SDK demo projects and integration samples for desktop, mobile, and server scenarios. It helps evaluate playback, capture, publishing, recording, and GB28181 workflows.
+This repository contains public HBRun StreamCore SDK demo projects for desktop, mobile, and .NET applications. The samples use public SDK APIs only and cover playback, capture, publishing, recording, SRT, ONVIF, and GB28181 workflows.
 
-### Repository Layout
+### Project Layout
 
-| Directory | Contents |
+| Directory | Platform and contents |
 | --- | --- |
-| `android/` | Android demo project |
-| `dotnet/` | .NET / Windows desktop demo project |
-| `ios/` | iOS demo project |
-| `qt/` | Qt C++ desktop demo project for Windows / Linux / macOS |
-| `docs/` | Demo usage and integration notes |
-| `shared-assets/` | Lightweight assets shared by README files, screenshots, and demo projects |
+| [`qt/`](qt/) | Qt Widgets desktop demo for Windows, Linux, and macOS |
+| [`android/`](android/) | Android playback, capture, and publishing samples |
+| [`ios/`](ios/) | Objective-C integration sample for iPhone and iPad |
+| [`dotnet/winforms/`](dotnet/winforms/) | Windows WinForms demo using the public .NET wrapper |
 
-### SDK Packages And Demo Packages
+### Downloads
 
-- StreamCore SDK packages are published through the HBRun website and Release assets in `hbstream/hbrun-downloads`.
-- Demo source remains lightweight for review, download, and integration.
-- Demo licenses are for Standard / Professional evaluation inside the demo projects only. They are not production licenses and cannot be reused in another process or app.
+Runnable demos, SDK packages, and codec add-ons are available from the official download channels:
 
-### Links
+- [HBRun Download Center](https://hbrun.com/en/downloads/)
+- [StreamCore SDK Product Page](https://hbrun.com/en/products/streamcore-sdk/)
+- [StreamCore SDK 1.3.3 Release](https://github.com/hbstream/hbrun-downloads/releases/tag/streamcore-sdk-v1.3.3)
+- [Runnable Demo Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 
-- Official downloads: [https://hbrun.com/downloads](https://hbrun.com/downloads)
-- StreamCore SDK product page: [https://hbrun.com/products/streamcore-sdk](https://hbrun.com/products/streamcore-sdk)
-- SDK release assets: [hbstream/hbrun-downloads](https://github.com/hbstream/hbrun-downloads/releases/tag/streamcore-sdk-v1.3.2)
+Each platform README lists its build requirements and SDK package location. SDK binaries and production license files are distributed separately from this public source repository.
+
+### Demo License
+
+The bundled demo license is bound to the matching demo process or app. It enables Standard and Professional evaluation features with an `hbrun.com` watermark. It cannot be reused by another process, package, or application and is not a production license.
+
+## 简体中文
+
+本仓库提供 HBRun StreamCore SDK 的公开演示工程，覆盖桌面端、移动端和 .NET。示例仅调用公开 SDK API，可用于验证播放、采集、推流、录像、SRT、ONVIF 和 GB28181 等能力。
+
+### 工程目录
+
+| 目录 | 平台与内容 |
+| --- | --- |
+| [`qt/`](qt/) | Qt Widgets 桌面演示工程，覆盖 Windows、Linux 和 macOS |
+| [`android/`](android/) | Android 播放、采集与推流示例 |
+| [`ios/`](ios/) | iPhone / iPad Objective-C 接入示例 |
+| [`dotnet/winforms/`](dotnet/winforms/) | Windows WinForms 演示工程，使用公开 .NET 封装 |
+
+### 下载与运行
+
+无需编译即可体验的演示程序、各平台 SDK 包和编解码增强包可从以下入口获取：
+
+- [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/)
+- [StreamCore SDK 产品页](https://hbrun.com/zh-CN/products/streamcore-sdk/)
+- [StreamCore SDK 1.3.3 Release](https://github.com/hbstream/hbrun-downloads/releases/tag/streamcore-sdk-v1.3.3)
+- [演示程序 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
+
+各平台目录的 README 提供构建要求和 SDK 放置位置。公开源码仓库不包含 SDK 二进制和正式授权文件。
+
+### Demo 授权
+
+演示程序自带的授权仅绑定对应 Demo 进程或 App，用于验证 Standard 与 Professional 能力，并显示 `hbrun.com` 水印。授权不能移入其他进程、包名或应用中使用，也不等同于商业授权。

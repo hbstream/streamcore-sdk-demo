@@ -1,0 +1,45 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        flatDir {
+            dirs(
+                    new File(settingsDir, 'app/libs')
+            )
+        }
+    }
+}
+
+rootProject.name = 'streamcore_demo_android'
+
+include ':app'
+
+def streamcoreSdkAarCandidates = []
+def streamcoreSdkAarFromEnv = System.getenv('STREAMCORE_DEMO_SDK_AAR')
+def allowExternalSdkAar = System.getenv('STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_AAR') == '1'
+if (allowExternalSdkAar && streamcoreSdkAarFromEnv != null && !streamcoreSdkAarFromEnv.trim().isEmpty()) {
+    streamcoreSdkAarCandidates.add(new File(streamcoreSdkAarFromEnv))
+}
+streamcoreSdkAarCandidates.add(new File(settingsDir, 'app/libs/streamcore-sdk.aar'))
+def streamcoreSdkAar = streamcoreSdkAarCandidates.find { it.isFile() }
+
+if (streamcoreSdkAar != null) {
+    gradle.ext.streamcoreSdkMode = 'aar'
+    gradle.ext.streamcoreSdkAarPath = streamcoreSdkAar.absolutePath
+} else {
+    throw new GradleException(
+            'StreamCore SDK AAR is missing. Place/extract streamcore-sdk.aar under ' +
+                    'streamcore_demo_android/app/libs/. For local development only, set ' +
+                    'STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_AAR=1 and STREAMCORE_DEMO_SDK_AAR to an explicit released AAR path.')
+}

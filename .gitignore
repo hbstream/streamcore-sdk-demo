@@ -1,28 +1,47 @@
-# Build output
-build/
-build-*/
-out/
-dist/
-cmake-build-*/
-
-# IDE and local state
-.idea/
-.vscode/
+﻿# Local configuration
+local.properties
+secrets.properties
+signing.properties
 *.user
 *.suo
-*.swp
-*.log
 
-# Large downloadable packages should be published as Release assets.
+# Build output
+build/
+bin/
+obj/
+out/
+DerivedData/
+.gradle/
+.cxx/
+.externalNativeBuild/
+
+# SDK/runtime packages and binaries
+*.aar
+*.apk
+*.ipa
 *.zip
 *.7z
-*.rar
 *.tar
 *.tgz
-*.tar.gz
-*.msi
+*.gz
+*.nupkg
+*.dll
 *.exe
-*.dmg
-*.pkg
-*.aar
-*.xcframework
+*.so
+*.dylib
+*.lib
+*.a
+*.pdb
+*.dmp
+
+# Secrets and local licenses
+*.pem
+*.key
+*.pfx
+*.jks
+*.keystore
+license/
+Frameworks/
+packages/
+sdk/
+sdk-packages/

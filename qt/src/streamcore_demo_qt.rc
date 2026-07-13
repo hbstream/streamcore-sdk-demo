@@ -1,0 +1,7 @@
+#include <windows.h>
+
+#ifdef STREAMCORE_DEMO_ICON_PATH
+IDI_STREAMCORE_DEMO ICON STREAMCORE_DEMO_ICON_PATH
+#else
+IDI_STREAMCORE_DEMO ICON "../assets/branding/streamcore_app_icon.ico"
+#endif

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
+    <Platform Condition="'$(Platform)' == ''">AnyCPU</Platform>
+    <ProjectGuid>{4D7B7B26-9E2D-4FE6-8C6E-4C7E26B7F96F}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>StreamCore.Demo.WinForms</RootNamespace>
+    <AssemblyName>StreamCore.Demo.WinForms</AssemblyName>
+    <TargetFrameworkVersion>v4.5.1</TargetFrameworkVersion>
+    <LangVersion>7.3</LangVersion>
+    <FileAlignment>512</FileAlignment>
+    <ApplicationIcon>Assets\streamcore_app_icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <StreamCorePackageRoot>..\packages\StreamCore.Sdk</StreamCorePackageRoot>
+    <StreamCorePackageSdkBinary>$(StreamCorePackageRoot)\lib\net451\StreamCore.Sdk.dll</StreamCorePackageSdkBinary>
+    <StreamCorePackageRuntimeIdentifier Condition="'$(StreamCorePackageRuntimeIdentifier)' == ''">win-x86</StreamCorePackageRuntimeIdentifier>
+    <StreamCorePackageNativeRuntimeDir>$(StreamCorePackageRoot)\runtimes\$(StreamCorePackageRuntimeIdentifier)\native</StreamCorePackageNativeRuntimeDir>
+    <StreamCoreSdkBinary Condition="'$(StreamCoreSdkBinary)' == ''">$(StreamCorePackageSdkBinary)</StreamCoreSdkBinary>
+    <StreamCoreNativeRuntimeDir Condition="'$(StreamCoreNativeRuntimeDir)' == ''">$(StreamCorePackageNativeRuntimeDir)</StreamCoreNativeRuntimeDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <PlatformTarget>x86</PlatformTarget>
+    <Prefer32Bit>true</Prefer32Bit>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="MainForm.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(StreamCoreSdkBinary)')">
+    <Reference Include="StreamCore.Sdk">
+      <HintPath>$(StreamCoreSdkBinary)</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+
+  <Target Name="ValidateStreamCoreSdkReference" BeforeTargets="ResolveReferences"
+          Condition="!Exists('$(StreamCoreSdkBinary)')">
+    <Error Text="StreamCore.Sdk is missing. Extract/copy the released .NET SDK package to streamcore_demo_dotnet_winforms\packages\StreamCore.Sdk\, or pass /p:StreamCoreSdkBinary=&lt;path&gt; and /p:StreamCoreNativeRuntimeDir=&lt;path&gt;." />
+  </Target>
+
+  <Target Name="CopyStreamCoreNativeRuntime" AfterTargets="Build"
+          Condition="Exists('$(StreamCoreNativeRuntimeDir)') Or Exists('$(StreamCoreSupplementalNativeRuntimeDir)')">
+    <ItemGroup>
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avcodec-61.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avcodec-62.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avdevice-61.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avdevice-62.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avfilter-10.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avfilter-11.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avformat-61.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avformat-62.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avutil-59.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avutil-60.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)hbr_streamcore_gb28181.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)hbr_streamcore_sdk.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)streamcore_gb28181.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libfaac.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libfaad.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libopenh264.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libx264-165.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)postproc-58.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swresample-5.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swresample-6.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swscale-8.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swscale-9.dll" />
+      <StreamCoreNativeRuntimeFiles Include="$(StreamCoreNativeRuntimeDir)\*.dll"
+                                    Condition="Exists('$(StreamCoreNativeRuntimeDir)')" />
+      <StreamCoreNativeRuntimeFiles Remove="$(StreamCoreNativeRuntimeDir)\hbr_streamcore_gb28181.dll" />
+      <StreamCoreNativeRuntimeFiles Remove="$(StreamCoreNativeRuntimeDir)\hbr_streamcore_sdk.dll" />
+      <StreamCoreSupplementalRuntimeFiles Include="$(StreamCoreSupplementalNativeRuntimeDir)\*.dll"
+                                          Condition="Exists('$(StreamCoreSupplementalNativeRuntimeDir)')" />
+      <StreamCoreSupplementalRuntimeFiles Remove="$(StreamCoreSupplementalNativeRuntimeDir)\streamcore_sdk.dll" />
+    </ItemGroup>
+    <Delete Files="@(StreamCoreStaleNativeRuntimeFiles)"
+            ContinueOnError="true" />
+    <Copy SourceFiles="@(StreamCoreNativeRuntimeFiles)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="'@(StreamCoreNativeRuntimeFiles)' != ''" />
+    <Copy SourceFiles="@(StreamCoreSupplementalRuntimeFiles)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true"
+          Condition="'@(StreamCoreSupplementalRuntimeFiles)' != ''" />
+  </Target>
+</Project>
