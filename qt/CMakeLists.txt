@@ -547,8 +547,8 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
                     "${CMAKE_CURRENT_LIST_DIR}/StreamCoreDemoQtInfo.plist.in"
                 MACOSX_BUNDLE_BUNDLE_NAME "StreamCore Demo Qt"
                 MACOSX_BUNDLE_GUI_IDENTIFIER "com.hbr.streamcoredemo.qt"
-                MACOSX_BUNDLE_SHORT_VERSION_STRING "1.3.3"
-                MACOSX_BUNDLE_BUNDLE_VERSION "1.3.3"
+                MACOSX_BUNDLE_SHORT_VERSION_STRING "1.4.0"
+                MACOSX_BUNDLE_BUNDLE_VERSION "1.4.0"
                 XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
                 XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
                 XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")

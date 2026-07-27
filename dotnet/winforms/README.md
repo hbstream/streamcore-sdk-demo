@@ -4,6 +4,8 @@
 
 This directory contains the Windows WinForms sample for the public `StreamCore.Sdk` .NET wrapper. It covers publishing, playback, GB28181, and license status. Native imports remain inside the wrapper; the demo does not declare its own P/Invoke surface.
 
+The Publisher page supports WHIP endpoints and an optional Bearer Token. Selecting WHIP locks the video and audio codecs to H.264 and Opus. Invalid SDK configuration or encoded-packet parameters are reported as `-6 / UNSUPPORTED_MEDIA_CODEC` with the actual and required codecs.
+
 ## Prepare the SDK
 
 Download the .NET SDK package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and extract it under this directory using the NuGet-style layout:

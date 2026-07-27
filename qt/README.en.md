@@ -4,6 +4,8 @@
 
 This directory contains the Qt 6 Widgets desktop demo for Windows, Linux, and macOS. It covers publishing, playback, ONVIF, GB28181, and license status, and serves as a C/C++ integration reference.
 
+The Publisher page supports WHIP endpoints and an optional Bearer Token. Selecting WHIP locks the video and audio codecs to H.264 and Opus. The SDK still rejects incompatible configuration or encoded-packet parameters with `-6 / UNSUPPORTED_MEDIA_CODEC` and a detailed actual/required codec message.
+
 ## Prepare the SDK
 
 Download the target platform package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and extract it to `sdk/<platform_arch>/` under this directory. For example:

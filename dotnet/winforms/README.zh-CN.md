@@ -2,6 +2,8 @@
 
 English: [README.md](README.md)
 
+Publisher 页面支持 WHIP 端点和可选 Bearer Token。选择 WHIP 后，视频与音频编码固定为 H.264 与 Opus；SDK 配置或编码包参数不符合协议要求时，界面会原样展示 `-6 / UNSUPPORTED_MEDIA_CODEC`，以及实际编码和要求编码。
+
 本目录提供 Windows WinForms 示例，使用公开的 `StreamCore.Sdk` .NET 封装，覆盖推流、拉流播放、GB28181 与授权状态。原生接口导入统一封装在 SDK 中，Demo 不自行声明 P/Invoke。
 
 ## 准备 SDK

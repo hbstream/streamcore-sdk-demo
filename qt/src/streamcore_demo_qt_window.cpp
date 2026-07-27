@@ -154,6 +154,11 @@ QString CapabilitySummaryText(
             "SRT 拉流和推流支持。"
         },
         {
+            "p2_whip",
+            "WHIP publishing with the H.264 / Opus media contract.",
+            "WHIP 推流，媒体编码要求为 H.264 / Opus。"
+        },
+        {
             "p2_player_low_latency",
             "Low-latency buffer, no-cache, and realtime playback profile parameters.",
             "低延迟缓冲、无缓存与实时播放档位参数。"
@@ -744,7 +749,9 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       publisher_audio_file_browse_button_(nullptr),
       publisher_audio_volume_slider_(nullptr),
       publisher_audio_volume_value_label_(nullptr),
+      publisher_protocol_combo_(nullptr),
       publisher_url_edit_(nullptr),
+      publisher_whip_bearer_token_edit_(nullptr),
       publisher_video_codec_combo_(nullptr),
       publisher_audio_codec_combo_(nullptr),
       publisher_audio_profile_combo_(nullptr),
@@ -767,6 +774,7 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       publisher_video_detail_row_(nullptr),
       publisher_audio_detail_row_(nullptr),
       publisher_file_mode_row_(nullptr),
+      publisher_whip_bearer_row_(nullptr),
       publisher_runtime_log_(nullptr),
       publisher_start_button_(nullptr),
       player_url_edit_(nullptr),
@@ -1103,12 +1111,24 @@ QString StreamCoreDemoQtWindow::SelectedPublisherAudioCodec() const
 
 QString StreamCoreDemoQtWindow::SelectedPublisherAudioProfileCodec() const
 {
+    const QString selected_codec = SelectedPublisherAudioCodec();
     if (publisher_audio_profile_combo_ == nullptr)
     {
-        return QString::fromUtf8("aac");
+        return selected_codec;
     }
-    const QString codec = publisher_audio_profile_combo_->currentData().toString();
-    return codec.isEmpty() ? QString::fromUtf8("aac") : codec;
+    const QString profile_codec =
+        publisher_audio_profile_combo_->currentData().toString();
+    if (selected_codec.compare(QString::fromUtf8("opus"), Qt::CaseInsensitive) == 0)
+    {
+        return QString::fromUtf8("opus");
+    }
+    if (profile_codec.compare(QString::fromUtf8("aac"), Qt::CaseInsensitive) == 0 ||
+        profile_codec.compare(QString::fromUtf8("heaac"), Qt::CaseInsensitive) == 0 ||
+        profile_codec.compare(QString::fromUtf8("aac-eld"), Qt::CaseInsensitive) == 0)
+    {
+        return profile_codec;
+    }
+    return selected_codec;
 }
 
 streamcore_publisher_rtmp_hevc_mode_t
@@ -1815,14 +1835,32 @@ void StreamCoreDemoQtWindow::BuildUi()
         QString::fromUtf8("publisher_audio_volume_value_label"));
     publisher_audio_volume_value_label_->setMinimumWidth(44);
 
+    publisher_protocol_combo_ = new QComboBox(publisher_page);
+    publisher_protocol_combo_->setObjectName(
+        QString::fromUtf8("publisher_protocol_combo"));
+    publisher_protocol_combo_->addItem(QString::fromUtf8("RTMP"), QString::fromUtf8("rtmp"));
+    publisher_protocol_combo_->addItem(QString::fromUtf8("RTSP"), QString::fromUtf8("rtsp"));
+    publisher_protocol_combo_->addItem(QString::fromUtf8("SRT"), QString::fromUtf8("srt"));
+    publisher_protocol_combo_->addItem(QString::fromUtf8("WHIP"), QString::fromUtf8("whip"));
+    publisher_protocol_combo_->setMinimumWidth(96);
+
     publisher_url_edit_ = new QLineEdit(publisher_page);
     publisher_url_edit_->setObjectName(QString::fromUtf8("publisher_url_edit"));
     publisher_url_edit_->setText(
         QString::fromUtf8("rtmp://192.0.2.10:1935/live/desktop_demo"));
     publisher_url_edit_->setCursorPosition(0);
     publisher_url_edit_->setToolTip(
-        UiText("RTMP / RTSP publishing destination.",
-               "RTMP / RTSP 推流目标地址。"));
+        UiText("RTMP / RTSP / SRT destination, or an HTTP(S) WHIP endpoint.",
+               "RTMP / RTSP / SRT 推流地址，或 HTTP(S) WHIP 端点。"));
+    publisher_whip_bearer_token_edit_ = new QLineEdit(publisher_page);
+    publisher_whip_bearer_token_edit_->setObjectName(
+        QString::fromUtf8("publisher_whip_bearer_token_edit"));
+    publisher_whip_bearer_token_edit_->setEchoMode(QLineEdit::Password);
+    publisher_whip_bearer_token_edit_->setPlaceholderText(
+        UiText("Optional Bearer token", "可选 Bearer Token"));
+    publisher_whip_bearer_token_edit_->setToolTip(UiText(
+        "Optional WHIP Authorization bearer token. It is used in memory only.",
+        "可选的 WHIP Authorization Bearer Token，仅在本次运行中使用。"));
     publisher_video_codec_combo_ = new QComboBox(publisher_page);
     publisher_video_codec_combo_->setObjectName(
         QString::fromUtf8("publisher_video_codec_combo"));
@@ -1833,6 +1871,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_audio_codec_combo_->setObjectName(
         QString::fromUtf8("publisher_audio_codec_combo"));
     publisher_audio_codec_combo_->addItem(QString::fromUtf8("AAC"), QString::fromUtf8("aac"));
+    publisher_audio_codec_combo_->addItem(QString::fromUtf8("Opus"), QString::fromUtf8("opus"));
     publisher_audio_codec_combo_->setMinimumWidth(84);
     publisher_audio_profile_combo_ = new QComboBox(publisher_page);
     publisher_audio_profile_combo_->setObjectName(
@@ -2404,13 +2443,28 @@ void StreamCoreDemoQtWindow::BuildUi()
             UpdatePublisherSourceSummary();
         });
     connect(
+        publisher_protocol_combo_,
+        QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this,
+        [this](int) {
+            UpdatePublisherTargetControls(true);
+            UpdatePublisherSourceControls();
+            UpdatePublisherSourceSummary();
+        });
+    connect(
         publisher_url_edit_,
         &QLineEdit::textChanged,
         this,
         [this](const QString&) {
+            UpdatePublisherTargetControls(false);
             UpdatePublisherSourceControls();
             UpdatePublisherSourceSummary();
         });
+    connect(
+        publisher_whip_bearer_token_edit_,
+        &QLineEdit::textChanged,
+        this,
+        [this](const QString&) { UpdatePublisherSourceSummary(); });
     connect(
         publisher_video_codec_combo_,
         QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -2423,7 +2477,36 @@ void StreamCoreDemoQtWindow::BuildUi()
         publisher_audio_codec_combo_,
         QOverload<int>::of(&QComboBox::currentIndexChanged),
         this,
-        [this](int) { UpdatePublisherSourceSummary(); });
+        [this](int) {
+            if (publisher_audio_profile_combo_ != nullptr)
+            {
+                const bool use_opus =
+                    SelectedPublisherAudioCodec().compare(
+                        QString::fromUtf8("opus"),
+                        Qt::CaseInsensitive) == 0;
+                const QSignalBlocker blocker(publisher_audio_profile_combo_);
+                publisher_audio_profile_combo_->clear();
+                if (use_opus)
+                {
+                    publisher_audio_profile_combo_->addItem(
+                        QString::fromUtf8("Opus"),
+                        QString::fromUtf8("opus"));
+                }
+                else
+                {
+                    publisher_audio_profile_combo_->addItem(
+                        QString::fromUtf8("AAC-LC"),
+                        QString::fromUtf8("aac"));
+                    publisher_audio_profile_combo_->addItem(
+                        QString::fromUtf8("HE-AAC"),
+                        QString::fromUtf8("heaac"));
+                    publisher_audio_profile_combo_->addItem(
+                        QString::fromUtf8("AAC-ELD"),
+                        QString::fromUtf8("aac-eld"));
+                }
+            }
+            UpdatePublisherSourceSummary();
+        });
     connect(
         publisher_audio_profile_combo_,
         QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -2932,6 +3015,10 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_publish_layout->setSpacing(kDesktopSectionSpacing);
     publisher_publish_layout->addWidget(createFieldRow(
         publisher_page,
+        UiText("Protocol", "推流协议"),
+        publisher_protocol_combo_));
+    publisher_publish_layout->addWidget(createFieldRow(
+        publisher_page,
         UiText("Video codec", "视频编码"),
         publisher_video_codec_editor));
     publisher_publish_layout->addWidget(createFieldRow(
@@ -2950,6 +3037,11 @@ void StreamCoreDemoQtWindow::BuildUi()
         publisher_page,
         UiText("Publish URL", "推流地址"),
         publisher_url_edit_));
+    publisher_whip_bearer_row_ = createFieldRow(
+        publisher_page,
+        QString::fromUtf8("Bearer Token"),
+        publisher_whip_bearer_token_edit_);
+    publisher_publish_layout->addWidget(publisher_whip_bearer_row_);
     publisher_publish_layout->addWidget(publisher_file_mode_row_);
     publisher_publish_layout->addWidget(createFieldRow(
         publisher_page,
@@ -2976,6 +3068,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_content_layout->setSpacing(12);
     publisher_layout->setContentsMargins(12, 12, 12, 12);
     publisher_layout->addLayout(publisher_content_layout, 1);
+    UpdatePublisherTargetControls(false);
 
     QWidget* player_left_widget = new QWidget(player_page);
     player_left_widget->setMinimumWidth(kSidebarWidth);
@@ -3706,6 +3799,147 @@ void StreamCoreDemoQtWindow::RefreshPublisherResolutionOptions()
     }
 }
 
+void StreamCoreDemoQtWindow::UpdatePublisherTargetControls(
+    bool apply_codec_defaults)
+{
+    if (publisher_protocol_combo_ == nullptr ||
+        publisher_url_edit_ == nullptr)
+    {
+        return;
+    }
+
+    QString protocol =
+        publisher_protocol_combo_->currentData().toString().toLower();
+    const QString current_url = publisher_url_edit_->text().trimmed();
+    if (!apply_codec_defaults)
+    {
+        QString detected_protocol;
+        if (current_url.startsWith(QString::fromUtf8("https://"), Qt::CaseInsensitive) ||
+            current_url.startsWith(QString::fromUtf8("http://"), Qt::CaseInsensitive))
+        {
+            detected_protocol = QString::fromUtf8("whip");
+        }
+        else
+        {
+            const int delimiter = current_url.indexOf(QString::fromUtf8("://"));
+            if (delimiter > 0)
+            {
+                detected_protocol = current_url.left(delimiter).toLower();
+            }
+        }
+        const int detected_index =
+            publisher_protocol_combo_->findData(detected_protocol);
+        if (detected_index >= 0)
+        {
+            const QSignalBlocker blocker(publisher_protocol_combo_);
+            publisher_protocol_combo_->setCurrentIndex(detected_index);
+            protocol = detected_protocol;
+        }
+    }
+    else
+    {
+        bool target_matches_protocol = false;
+        if (protocol == QString::fromUtf8("whip"))
+        {
+            target_matches_protocol =
+                current_url.startsWith(QString::fromUtf8("https://"), Qt::CaseInsensitive) ||
+                current_url.startsWith(QString::fromUtf8("http://"), Qt::CaseInsensitive);
+        }
+        else
+        {
+            target_matches_protocol = current_url.startsWith(
+                protocol + QString::fromUtf8("://"),
+                Qt::CaseInsensitive);
+        }
+
+        if (!target_matches_protocol)
+        {
+            QString example_url;
+            if (protocol == QString::fromUtf8("whip"))
+            {
+                example_url = QString::fromUtf8(
+                    "https://localhost:8443/whip");
+            }
+            else if (protocol == QString::fromUtf8("srt"))
+            {
+                example_url = QString::fromUtf8(
+                    "srt://127.0.0.1:9000?mode=caller");
+            }
+            else if (protocol == QString::fromUtf8("rtsp"))
+            {
+                example_url = QString::fromUtf8(
+                    "rtsp://127.0.0.1:8554/live/demo");
+            }
+            else
+            {
+                example_url = QString::fromUtf8(
+                    "rtmp://127.0.0.1:1935/live/demo");
+            }
+            publisher_url_edit_->setText(example_url);
+            publisher_url_edit_->setCursorPosition(0);
+        }
+
+        if (protocol == QString::fromUtf8("whip"))
+        {
+            const int h264_index = publisher_video_codec_combo_ != nullptr ?
+                publisher_video_codec_combo_->findData(QString::fromUtf8("h264")) :
+                -1;
+            const int opus_index = publisher_audio_codec_combo_ != nullptr ?
+                publisher_audio_codec_combo_->findData(QString::fromUtf8("opus")) :
+                -1;
+            if (h264_index >= 0)
+            {
+                publisher_video_codec_combo_->setCurrentIndex(h264_index);
+            }
+            if (opus_index >= 0)
+            {
+                publisher_audio_codec_combo_->setCurrentIndex(opus_index);
+            }
+        }
+    }
+
+    const bool is_whip = protocol == QString::fromUtf8("whip");
+    if (is_whip)
+    {
+        const int h264_index = publisher_video_codec_combo_ != nullptr ?
+            publisher_video_codec_combo_->findData(QString::fromUtf8("h264")) :
+            -1;
+        const int opus_index = publisher_audio_codec_combo_ != nullptr ?
+            publisher_audio_codec_combo_->findData(QString::fromUtf8("opus")) :
+            -1;
+        if (h264_index >= 0 &&
+            publisher_video_codec_combo_->currentIndex() != h264_index)
+        {
+            publisher_video_codec_combo_->setCurrentIndex(h264_index);
+        }
+        if (opus_index >= 0 &&
+            publisher_audio_codec_combo_->currentIndex() != opus_index)
+        {
+            publisher_audio_codec_combo_->setCurrentIndex(opus_index);
+        }
+    }
+    if (publisher_video_codec_combo_ != nullptr)
+    {
+        publisher_video_codec_combo_->setEnabled(!is_whip);
+    }
+    if (publisher_audio_codec_combo_ != nullptr)
+    {
+        publisher_audio_codec_combo_->setEnabled(!is_whip);
+    }
+    if (publisher_audio_profile_combo_ != nullptr)
+    {
+        publisher_audio_profile_combo_->setEnabled(!is_whip);
+    }
+    if (publisher_whip_bearer_row_ != nullptr)
+    {
+        publisher_whip_bearer_row_->setVisible(is_whip);
+    }
+    if (publisher_whip_bearer_token_edit_ != nullptr)
+    {
+        publisher_whip_bearer_token_edit_->setEnabled(is_whip);
+    }
+}
+
 void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
 {
     if (publisher_source_combo_ == nullptr ||
@@ -3789,6 +4023,7 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
     const bool has_video_source =
         is_camera || is_desktop || is_video_file || is_image;
     publisher_rtmp_hevc_combo_->setEnabled(uses_rtmp && has_video_source);
+    UpdatePublisherTargetControls(false);
     publisher_preview_toggle_->setEnabled(CurrentPublisherSelectionSupportsPreview());
 
     publisher_audio_file_label_->setVisible(needs_audio_file);
@@ -3923,6 +4158,7 @@ void StreamCoreDemoQtWindow::StartPublisher()
     }
 
     streamcore_publisher_config_t config;
+    streamcore_publisher_whip_options_t whip_options;
     streamcore_publisher_preflight_t preflight = {};
     streamcore_publisher_runtime_info_t runtime_info = {};
     streamcore_media_file_profile_t media_file_profile = {};
@@ -3943,6 +4179,10 @@ void StreamCoreDemoQtWindow::StartPublisher()
     QByteArray capture_session_name("qt_publisher_video_capture");
     QByteArray audio_capture_session_name("qt_publisher_audio_capture");
     QByteArray publish_url = publisher_url_edit_->text().trimmed().toUtf8();
+    QByteArray whip_bearer_token =
+        publisher_whip_bearer_token_edit_ != nullptr ?
+            publisher_whip_bearer_token_edit_->text().trimmed().toUtf8() :
+            QByteArray();
     QByteArray input_binding;
     QByteArray camera_id;
     QByteArray desktop_display_id;
@@ -3952,6 +4192,23 @@ void StreamCoreDemoQtWindow::StartPublisher()
         publisher_audio_file_path_edit_->text().trimmed().toUtf8();
     QByteArray video_codec = SelectedPublisherVideoCodec().toUtf8();
     QByteArray audio_codec = SelectedPublisherAudioProfileCodec().toUtf8();
+    if (EnvironmentText("STREAMCORE_DEMO_QT_AUTORUN").compare(
+            QString::fromUtf8("publisher"),
+            Qt::CaseInsensitive) == 0)
+    {
+        const QString scripted_video_codec =
+            EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_VIDEO_CODEC");
+        const QString scripted_audio_codec =
+            EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_AUDIO_CODEC");
+        if (!scripted_video_codec.isEmpty())
+        {
+            video_codec = scripted_video_codec.trimmed().toUtf8();
+        }
+        if (!scripted_audio_codec.isEmpty())
+        {
+            audio_codec = scripted_audio_codec.trimmed().toUtf8();
+        }
+    }
     QByteArray media_file_container;
     QByteArray media_file_audio_codec;
     QByteArray media_file_video_codec;
@@ -4054,10 +4311,14 @@ void StreamCoreDemoQtWindow::StartPublisher()
     }
 
     streamcore_publisher_get_default_config(&config);
+    streamcore_publisher_get_default_whip_options(&whip_options);
     config.session_name = session_name.constData();
     config.publish_url = publish_url.constData();
     config.allow_reconnect = 1;
     config.rtmp_hevc_mode = SelectedPublisherRtmpHevcMode();
+    whip_options.bearer_token = whip_bearer_token.isEmpty() ?
+        nullptr :
+        whip_bearer_token.constData();
     config.transcode.audio_codec_name = audio_codec.constData();
     config.transcode.video_codec_name = video_codec.constData();
     config.transcode.target_width = selected_resolution.width() > 0 ?
@@ -4375,6 +4636,12 @@ void StreamCoreDemoQtWindow::StartPublisher()
         &publisher,
         error_text,
         sizeof(error_text));
+    if (result == STREAMCORE_RESULT_OK)
+    {
+        result = streamcore_publisher_set_whip_options(
+            publisher,
+            &whip_options);
+    }
     if (result == STREAMCORE_RESULT_OK)
     {
         result = streamcore_publisher_preflight(
@@ -4695,16 +4962,21 @@ void StreamCoreDemoQtWindow::StartPublisher()
         {
             reason = ToQString(preflight.detail);
         }
+        const QString result_name =
+            ToQString(streamcore_result_name(result));
+        const QString result_detail = reason.isEmpty() ?
+            result_name :
+            QString::fromUtf8("%1: %2").arg(result_name, reason);
         SetOperationStatus(
             QString::fromUtf8("publisher.start"),
             QString::number(result),
-            QString::fromUtf8("failed"),
-            reason);
+            result_name,
+            result_detail);
         if (publisher_status_label_ != nullptr)
         {
             publisher_status_label_->setText(UiText(
-                "Publish failed: %1",
-                "推流失败：%1").arg(reason.isEmpty() ?
+                "Publish failed [%1]: %2",
+                "推流失败 [%1]：%2").arg(result_name, reason.isEmpty() ?
                     UiText("unknown error", "未知错误") :
                     reason));
         }
@@ -4715,9 +4987,10 @@ void StreamCoreDemoQtWindow::StartPublisher()
             publisher_preview_label_->show();
         }
         publisher_preview_label_->setText(UiText(
-            "Publisher start failed.\nresult=%1 ready=%2 state=%3\n%4",
-            "推流启动失败。\nresult=%1 ready=%2 state=%3\n%4")
+            "Publisher start failed.\nresult=%1 (%2) ready=%3 state=%4\n%5",
+            "推流启动失败。\nresult=%1 (%2) ready=%3 state=%4\n%5")
                 .arg(result)
+                .arg(result_name)
                 .arg(use_video_capture_sink ?
                     (use_audio_capture_sink &&
                         audio_capture_preflight.is_ready_to_start == 0 ?
@@ -7118,6 +7391,13 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                 publisher_url_edit_->setText(publish_url);
                 publisher_url_edit_->setCursorPosition(0);
             }
+            const QString whip_bearer_token =
+                EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_WHIP_BEARER_TOKEN");
+            if (!whip_bearer_token.isEmpty() &&
+                publisher_whip_bearer_token_edit_ != nullptr)
+            {
+                publisher_whip_bearer_token_edit_->setText(whip_bearer_token);
+            }
             RefreshPublisherResolutionOptions();
             SelectComboByDataOrText(
                 publisher_video_codec_combo_,
@@ -7206,6 +7486,15 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                     0,
                     100));
             }
+            // Source/audio selection refreshes dependent controls. Re-apply the
+            // scripted codec choices last so autorun verifies the same invalid
+            // codec path an interactive user can select.
+            SelectComboByDataOrText(
+                publisher_video_codec_combo_,
+                EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_VIDEO_CODEC"));
+            SelectComboByDataOrText(
+                publisher_audio_codec_combo_,
+                EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_AUDIO_CODEC"));
             if (quit_after_ms > 0)
             {
                 ScheduleAutorunQuit(quit_after_ms, mode);

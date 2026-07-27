@@ -7,7 +7,7 @@
 
 ## English
 
-This repository contains public HBRun StreamCore SDK demo projects for desktop, mobile, and .NET applications. The samples use public SDK APIs only and cover playback, capture, publishing, recording, SRT, ONVIF, and GB28181 workflows.
+This repository contains public HBRun StreamCore SDK demo projects for desktop, mobile, and .NET applications. The samples use public SDK APIs only and cover playback, capture, publishing, recording, SRT, WHIP (WebRTC ingest), ONVIF, and GB28181 workflows.
 
 ### Project Layout
 
@@ -22,8 +22,8 @@ This repository contains public HBRun StreamCore SDK demo projects for desktop, 
 
 Runnable demos, SDK packages, and codec add-ons are available from the official download channels:
 
-- [HBRun Download Center](https://hbrun.com/en/downloads/)
-- [StreamCore SDK Product Page](https://hbrun.com/en/products/streamcore-sdk/)
+- [HBRun Download Center](https://hbrun.com/en/downloads)
+- [StreamCore SDK Product Page](https://hbrun.com/en/products/streamcore-sdk)
 - [Latest StreamCore SDK Release](https://github.com/hbstream/hbrun-downloads/releases?q=streamcore-sdk&expanded=true)
 - [Runnable Demo Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 
@@ -35,7 +35,7 @@ Runnable demo packages include a license bound to the matching demo process or a
 
 ## 简体中文
 
-本仓库提供 HBRun StreamCore SDK 的公开演示工程，覆盖桌面端、移动端和 .NET。示例仅调用公开 SDK API，可用于验证播放、采集、推流、录像、SRT、ONVIF 和 GB28181 等能力。
+本仓库提供 HBRun StreamCore SDK 的公开演示工程，覆盖桌面端、移动端和 .NET。示例仅调用公开 SDK API，可用于验证播放、采集、推流、录像、SRT、WHIP（WebRTC 推流）、ONVIF 和 GB28181 等能力。
 
 ### 工程目录
 
@@ -50,8 +50,8 @@ Runnable demo packages include a license bound to the matching demo process or a
 
 无需编译即可体验的演示程序、各平台 SDK 包和编解码增强包可从以下入口获取：
 
-- [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/)
-- [StreamCore SDK 产品页](https://hbrun.com/zh-CN/products/streamcore-sdk/)
+- [HBRun 下载中心](https://hbrun.cn/downloads)
+- [StreamCore SDK 产品页](https://hbrun.cn/products/streamcore-sdk)
 - [最新 StreamCore SDK Release](https://github.com/hbstream/hbrun-downloads/releases?q=streamcore-sdk&expanded=true)
 - [演示程序 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 

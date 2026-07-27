@@ -164,6 +164,10 @@ private:
     // 根据当前 Publisher source 切换摄像头设备或本地文件输入控件。
     void UpdatePublisherSourceControls();
 
+    // Refresh transport-specific controls without hiding invalid codec choices
+    // that are useful for demonstrating the SDK preflight error contract.
+    void UpdatePublisherTargetControls(bool apply_codec_defaults);
+
     // 返回当前 Publisher 选择是否允许在运行中附加本地预览。
     bool IsPublisherPreviewEnabled() const;
 
@@ -373,7 +377,9 @@ private:
     QPushButton* publisher_audio_file_browse_button_;
     QSlider* publisher_audio_volume_slider_;
     QLabel* publisher_audio_volume_value_label_;
+    QComboBox* publisher_protocol_combo_;
     QLineEdit* publisher_url_edit_;
+    QLineEdit* publisher_whip_bearer_token_edit_;
     QComboBox* publisher_video_codec_combo_;
     QComboBox* publisher_audio_codec_combo_;
     QComboBox* publisher_audio_profile_combo_;
@@ -396,6 +402,7 @@ private:
     QWidget* publisher_video_detail_row_;
     QWidget* publisher_audio_detail_row_;
     QWidget* publisher_file_mode_row_;
+    QWidget* publisher_whip_bearer_row_;
     QPlainTextEdit* publisher_runtime_log_;
     QPushButton* publisher_start_button_;
     QLineEdit* player_url_edit_;

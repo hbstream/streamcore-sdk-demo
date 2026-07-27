@@ -2,6 +2,8 @@
 
 English: [README.en.md](README.en.md)
 
+Publisher 页面支持 WHIP 端点和可选 Bearer Token。选择 WHIP 后，视频与音频编码固定为 H.264 与 Opus；SDK 配置或编码包参数不符合协议要求时，界面日志会原样展示 `-6 / UNSUPPORTED_MEDIA_CODEC`，以及实际编码和要求编码。
+
 本目录提供基于 Qt 6 Widgets 的桌面演示程序，覆盖 Windows、Linux 和 macOS。界面包含推流、拉流播放、ONVIF、GB28181 与授权状态，可作为 C/C++ 集成参考。
 
 ## 准备 SDK

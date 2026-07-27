@@ -16,7 +16,7 @@
   <PropertyGroup>
     <StreamCorePackageRoot>..\packages\StreamCore.Sdk</StreamCorePackageRoot>
     <StreamCorePackageSdkBinary>$(StreamCorePackageRoot)\lib\net451\StreamCore.Sdk.dll</StreamCorePackageSdkBinary>
-    <StreamCorePackageRuntimeIdentifier Condition="'$(StreamCorePackageRuntimeIdentifier)' == ''">win-x86</StreamCorePackageRuntimeIdentifier>
+    <StreamCorePackageRuntimeIdentifier Condition="'$(StreamCorePackageRuntimeIdentifier)' == ''">win-x64</StreamCorePackageRuntimeIdentifier>
     <StreamCorePackageNativeRuntimeDir>$(StreamCorePackageRoot)\runtimes\$(StreamCorePackageRuntimeIdentifier)\native</StreamCorePackageNativeRuntimeDir>
     <StreamCoreSdkBinary Condition="'$(StreamCoreSdkBinary)' == ''">$(StreamCorePackageSdkBinary)</StreamCoreSdkBinary>
     <StreamCoreNativeRuntimeDir Condition="'$(StreamCoreNativeRuntimeDir)' == ''">$(StreamCorePackageNativeRuntimeDir)</StreamCoreNativeRuntimeDir>
@@ -27,8 +27,8 @@
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
     <OutputPath>bin\Debug\</OutputPath>
-    <PlatformTarget>x86</PlatformTarget>
-    <Prefer32Bit>true</Prefer32Bit>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
   </PropertyGroup>
 
@@ -36,8 +36,8 @@
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
-    <PlatformTarget>x86</PlatformTarget>
-    <Prefer32Bit>true</Prefer32Bit>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
     <DefineConstants>TRACE</DefineConstants>
   </PropertyGroup>
 
@@ -80,14 +80,30 @@
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avformat-62.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avutil-59.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)avutil-60.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)D3Dcompiler_47.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)dxcompiler.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)dxil.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)FreeImage.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)hbr_streamcore_gb28181.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)hbr_streamcore_sdk.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)icuuc.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libcrypto-3.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libcrypto-3-x64.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)streamcore_gb28181.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libfaac.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libfaad.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libgcc_s_dw2-1.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libgcc_s_seh-1.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libopenh264.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libx264-165.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)libx265.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)opengl32sw.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)postproc-58.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)Qt6Core.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)Qt6Gui.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)Qt6Network.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)Qt6Svg.dll" />
+      <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)Qt6Widgets.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swresample-5.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swresample-6.dll" />
       <StreamCoreStaleNativeRuntimeFiles Include="$(OutputPath)swscale-8.dll" />

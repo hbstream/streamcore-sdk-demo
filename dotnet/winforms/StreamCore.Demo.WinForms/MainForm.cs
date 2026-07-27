@@ -76,9 +76,11 @@ namespace StreamCore.Demo.WinForms
         private readonly ComboBox publisherAudioSampleRateComboBox = CreateComboBox();
         private readonly ComboBox publisherAudioBitrateComboBox = CreateComboBox();
         private readonly ComboBox publisherRtmpHevcModeComboBox = CreateComboBox();
+        private readonly ComboBox publisherProtocolComboBox = CreateComboBox();
         private readonly TextBox publisherMediaFileTextBox = CreateSingleLineEditor();
         private readonly TextBox publisherAudioFileTextBox = CreateSingleLineEditor();
         private readonly TextBox publisherPublishUrlTextBox = CreateSingleLineEditor();
+        private readonly TextBox publisherWhipBearerTokenTextBox = CreateSingleLineEditor();
         private readonly NumericUpDown publisherVideoBitrateBox = CreateIntegerBox(128, 50000, 2000);
         private readonly NumericUpDown publisherFpsBox = CreateIntegerBox(1, 60, 25);
         private readonly NumericUpDown publisherGopBox = CreateIntegerBox(1, 300, 50);
@@ -161,16 +163,19 @@ namespace StreamCore.Demo.WinForms
         private Control publisherVideoDetailRow;
         private Control publisherAudioDetailRow;
         private Control publisherFileModeRow;
+        private Control publisherWhipBearerTokenRow;
         private Control playerOnvifSearchRow;
         private Control playerOnvifListRow;
         private Control playerOnvifCredentialRow;
         private Control gbVideoDeviceRow;
         private Control gbAudioDeviceRow;
         private bool onvifSearchInProgress;
+        private bool suppressPublisherProtocolChange;
 
         private StreamCorePlayerSession playerSession;
         private StreamCorePublisherSession publisherSession;
         private StreamCoreCaptureSession publisherPreviewSession;
+        private StreamCoreCaptureSession publisherMediaInputSession;
         private StreamCoreGb28181Session gbSession;
 
         private StreamCoreCaptureSourceInfo[] cameraSources = new StreamCoreCaptureSourceInfo[0];
@@ -398,6 +403,10 @@ namespace StreamCore.Demo.WinForms
             publisherFileModeRow = CreateFieldRow(
                 T("File transcode", "文件转码"),
                 publisherFileModeComboBox);
+            publisherWhipBearerTokenTextBox.UseSystemPasswordChar = true;
+            publisherWhipBearerTokenRow = CreateFieldRow(
+                "Bearer Token",
+                publisherWhipBearerTokenTextBox);
             publisherPreviewCheckBox.Text = T("Enable", "启用");
 
             AddSidebarSection(
@@ -418,6 +427,7 @@ namespace StreamCore.Demo.WinForms
                 left,
                 CreateSectionCard(
                     T("Publish setup", "推流设置"),
+                    CreateFieldRow(T("Protocol", "推流协议"), publisherProtocolComboBox),
                     CreateFieldRow(T("Video codec", "视频编码"), publisherVideoCodecComboBox),
                     CreateFieldRow(
                         T("Video bitrate", "视频码率"),
@@ -438,6 +448,7 @@ namespace StreamCore.Demo.WinForms
                             T("Audio bitrate", "音频码率"),
                             publisherAudioBitrateComboBox)),
                     CreateFieldRow(T("Publish URL", "推流地址"), publisherPublishUrlTextBox),
+                    publisherWhipBearerTokenRow,
                     publisherFileModeRow,
                     CreateFieldRow(
                         "RTMP HEVC",
@@ -725,8 +736,24 @@ namespace StreamCore.Demo.WinForms
             publisherAudioComboBox.SelectedIndexChanged += (sender, args) => UpdatePublisherUi();
             publisherFileModeComboBox.SelectedIndexChanged += (sender, args) => UpdatePublisherUi();
             publisherVideoCodecComboBox.SelectedIndexChanged += (sender, args) => UpdatePublisherUi();
-            publisherAudioCodecComboBox.SelectedIndexChanged += (sender, args) => UpdatePublisherUi();
-            publisherPublishUrlTextBox.TextChanged += (sender, args) => UpdatePublisherUi();
+            publisherAudioCodecComboBox.SelectedIndexChanged += (sender, args) =>
+            {
+                RefreshPublisherAudioProfileOptions();
+                UpdatePublisherUi();
+            };
+            publisherProtocolComboBox.SelectedIndexChanged += (sender, args) =>
+            {
+                if (!suppressPublisherProtocolChange)
+                {
+                    ApplyPublisherProtocolSelection();
+                }
+            };
+            publisherPublishUrlTextBox.TextChanged += (sender, args) =>
+            {
+                SyncPublisherProtocolFromUrl();
+                UpdatePublisherUi();
+            };
+            publisherWhipBearerTokenTextBox.TextChanged += (sender, args) => UpdatePublisherUi();
             publisherVideoSourceComboBox.SelectedIndexChanged += (sender, args) =>
             {
                 RefreshPublisherResolutionOptions();
@@ -743,6 +770,13 @@ namespace StreamCore.Demo.WinForms
                 if (publisherPreviewSession != null)
                 {
                     publisherPreviewSession.SetWindowsPreviewRenderTarget(
+                        publisherPreviewPanel.Handle,
+                        publisherPreviewPanel.Width,
+                        publisherPreviewPanel.Height);
+                }
+                if (publisherMediaInputSession != null && publisherPreviewCheckBox.Checked)
+                {
+                    publisherMediaInputSession.SetWindowsPreviewRenderTarget(
                         publisherPreviewPanel.Handle,
                         publisherPreviewPanel.Width,
                         publisherPreviewPanel.Height);
@@ -835,6 +869,7 @@ namespace StreamCore.Demo.WinForms
             publisherAudioSampleRateComboBox.Items.Clear();
             publisherAudioBitrateComboBox.Items.Clear();
             publisherRtmpHevcModeComboBox.Items.Clear();
+            publisherProtocolComboBox.Items.Clear();
             playerDecodeModeComboBox.Items.Clear();
             playerRenderPathComboBox.Items.Clear();
             gbTransportComboBox.Items.Clear();
@@ -857,9 +892,8 @@ namespace StreamCore.Demo.WinForms
             AddComboValue(publisherVideoCodecComboBox, "H.264", "h264");
             AddComboValue(publisherVideoCodecComboBox, "H.265 / HEVC", "h265");
             AddComboValue(publisherAudioCodecComboBox, "AAC", "aac");
-            AddComboValue(publisherAudioProfileComboBox, "AAC-LC", "aac");
-            AddComboValue(publisherAudioProfileComboBox, "HE-AAC", "heaac");
-            AddComboValue(publisherAudioProfileComboBox, "AAC-ELD", "aac-eld");
+            AddComboValue(publisherAudioCodecComboBox, "Opus", "opus");
+            RefreshPublisherAudioProfileOptions();
             AddComboValue(publisherAudioSampleRateComboBox, "32000 Hz", 32000);
             AddComboValue(publisherAudioSampleRateComboBox, "44100 Hz", 44100);
             AddComboValue(publisherAudioSampleRateComboBox, "48000 Hz", 48000);
@@ -879,6 +913,10 @@ namespace StreamCore.Demo.WinForms
                 publisherRtmpHevcModeComboBox,
                 "Enhanced RTMP",
                 StreamCorePublisherRtmpHevcMode.EnhancedRtmp);
+            AddComboValue(publisherProtocolComboBox, "RTMP", "rtmp");
+            AddComboValue(publisherProtocolComboBox, "RTSP", "rtsp");
+            AddComboValue(publisherProtocolComboBox, "SRT", "srt");
+            AddComboValue(publisherProtocolComboBox, "WHIP", "whip");
 
             AddComboValue(playerDecodeModeComboBox, T("Software decode", "软件解码"), false);
             AddComboValue(playerDecodeModeComboBox, T("Hardware decode", "硬件解码"), true);
@@ -1166,6 +1204,113 @@ namespace StreamCore.Demo.WinForms
             SetStatus("log_view cleared");
         }
 
+        private void RefreshPublisherAudioProfileOptions()
+        {
+            string selectedCodec = SelectedTextValue(
+                publisherAudioCodecComboBox,
+                "aac");
+            string previousProfile = SelectedTextValue(
+                publisherAudioProfileComboBox,
+                string.Empty);
+            publisherAudioProfileComboBox.Items.Clear();
+            if (string.Equals(selectedCodec, "opus", StringComparison.OrdinalIgnoreCase))
+            {
+                AddComboValue(publisherAudioProfileComboBox, "Opus", "opus");
+                return;
+            }
+
+            AddComboValue(publisherAudioProfileComboBox, "AAC-LC", "aac");
+            AddComboValue(publisherAudioProfileComboBox, "HE-AAC", "heaac");
+            AddComboValue(publisherAudioProfileComboBox, "AAC-ELD", "aac-eld");
+            if (!string.IsNullOrWhiteSpace(previousProfile))
+            {
+                SelectComboByValue(publisherAudioProfileComboBox, previousProfile);
+            }
+        }
+
+        private bool IsWhipPublisherTarget()
+        {
+            string url = publisherPublishUrlTextBox.Text.Trim();
+            return url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || url.StartsWith("http://", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void SyncPublisherProtocolFromUrl()
+        {
+            string url = publisherPublishUrlTextBox.Text.Trim();
+            string protocol = string.Empty;
+            if (IsWhipPublisherTarget())
+            {
+                protocol = "whip";
+            }
+            else
+            {
+                int separator = url.IndexOf("://", StringComparison.Ordinal);
+                if (separator > 0)
+                {
+                    protocol = url.Substring(0, separator).ToLowerInvariant();
+                }
+            }
+
+            string current = SelectedTextValue(publisherProtocolComboBox, "rtmp");
+            if (string.IsNullOrWhiteSpace(protocol)
+                || string.Equals(current, protocol, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            suppressPublisherProtocolChange = true;
+            try
+            {
+                SelectComboByValue(publisherProtocolComboBox, protocol);
+            }
+            finally
+            {
+                suppressPublisherProtocolChange = false;
+            }
+            if (string.Equals(protocol, "whip", StringComparison.OrdinalIgnoreCase))
+            {
+                SelectComboByValue(publisherVideoCodecComboBox, "h264");
+                SelectComboByValue(publisherAudioCodecComboBox, "opus");
+            }
+        }
+
+        private void ApplyPublisherProtocolSelection()
+        {
+            string protocol = SelectedTextValue(publisherProtocolComboBox, "rtmp");
+            string currentUrl = publisherPublishUrlTextBox.Text.Trim();
+            bool matches = string.Equals(protocol, "whip", StringComparison.OrdinalIgnoreCase)
+                ? IsWhipPublisherTarget()
+                : currentUrl.StartsWith(
+                    protocol + "://",
+                    StringComparison.OrdinalIgnoreCase);
+            if (!matches)
+            {
+                if (string.Equals(protocol, "whip", StringComparison.OrdinalIgnoreCase))
+                {
+                    publisherPublishUrlTextBox.Text = "https://localhost:8443/whip";
+                }
+                else if (string.Equals(protocol, "srt", StringComparison.OrdinalIgnoreCase))
+                {
+                    publisherPublishUrlTextBox.Text = "srt://127.0.0.1:9000?mode=caller";
+                }
+                else if (string.Equals(protocol, "rtsp", StringComparison.OrdinalIgnoreCase))
+                {
+                    publisherPublishUrlTextBox.Text = "rtsp://127.0.0.1:8554/live/demo";
+                }
+                else
+                {
+                    publisherPublishUrlTextBox.Text = LocalPublishUrl;
+                }
+            }
+            if (string.Equals(protocol, "whip", StringComparison.OrdinalIgnoreCase))
+            {
+                SelectComboByValue(publisherVideoCodecComboBox, "h264");
+                SelectComboByValue(publisherAudioCodecComboBox, "opus");
+            }
+            UpdatePublisherUi();
+        }
+
         private void StartPublisher()
         {
             try
@@ -1189,13 +1334,24 @@ namespace StreamCore.Demo.WinForms
                 StreamCoreCallResult start = publisherSession.Start();
 
                 LogPublisher(
-                    "set_config=" + configResult
-                    + " preflight=" + preflight.Call.Result + "/" + SafePreflight(preflight.Preflight)
-                    + " start=" + start.Result + " " + start.ErrorText);
+                    "set_config=" + FormatResult(configResult)
+                    + " preflight=" + FormatResult(preflight.Call.Result) + "/" + SafePreflight(preflight.Preflight)
+                    + " preflight_error=" + preflight.Call.ErrorText
+                    + " start=" + FormatResult(start.Result) + " " + start.ErrorText);
 
                 if (start.Result == StreamCoreResult.Ok)
                 {
-                    StartPublisherPreviewIfNeeded(sourceMode);
+                    if (UsesPublisherMediaCapture(sourceMode, audioMode))
+                    {
+                        if (!StartPublisherMediaInput(sourceMode))
+                        {
+                            StopPublisher();
+                        }
+                    }
+                    else
+                    {
+                        StartPublisherPreviewIfNeeded(sourceMode);
+                    }
                 }
                 else
                 {
@@ -1235,10 +1391,25 @@ namespace StreamCore.Demo.WinForms
             bool enableAudio = audioMode != PublisherAudioMode.None;
             int audioSampleRate = SelectedValue(publisherAudioSampleRateComboBox, 48000);
             int audioBitrate = SelectedValue(publisherAudioBitrateComboBox, 128);
-            string audioCodecName = SelectedTextValue(publisherAudioProfileComboBox, "aac");
+            string audioCodecName = SelectedTextValue(
+                publisherAudioProfileComboBox,
+                SelectedTextValue(publisherAudioCodecComboBox, "aac"));
+            if (string.Equals(
+                    Environment.GetEnvironmentVariable("STREAMCORE_DEMO_DOTNET_AUTORUN"),
+                    "publisher",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                string scriptedAudioCodec =
+                    Environment.GetEnvironmentVariable("STREAMCORE_DEMO_DOTNET_PUBLISHER_AUDIO_CODEC");
+                if (!string.IsNullOrWhiteSpace(scriptedAudioCodec))
+                {
+                    audioCodecName = scriptedAudioCodec.Trim().ToLowerInvariant();
+                }
+            }
 
             config.SessionName = "dotnet-winforms-publisher";
             config.PublishUrl = publisherPublishUrlTextBox.Text.Trim();
+            config.WhipBearerToken = publisherWhipBearerTokenTextBox.Text.Trim();
             config.EnableVideo = enableVideo;
             config.EnableAudio = enableAudio;
             config.AllowReconnect = true;
@@ -1280,11 +1451,14 @@ namespace StreamCore.Demo.WinForms
 
             if (sourceMode == PublisherSourceMode.VideoFile)
             {
-                config.InputKind = StreamCorePublisherInputKind.MediaFile;
+                config.InputKind = StreamCorePublisherInputKind.AppRawFeed;
+                config.InputBindingId = "capture:media-file";
                 config.EnableAudio = true;
                 config.EnableVideo = true;
-                config.FileInput.FilePath = publisherMediaFileTextBox.Text.Trim();
-                config.FileInput.LoopEnabled = true;
+                config.SourceMediaProfile.HasAudio = true;
+                config.SourceMediaProfile.AudioCodecName = "pcm";
+                config.SourceMediaProfile.SampleRate = audioSampleRate;
+                config.SourceMediaProfile.ChannelCount = 2;
                 config.Transcode.AudioMode = SelectedValue(
                     publisherFileModeComboBox,
                     StreamCorePublisherTranscodeMode.Auto);
@@ -1296,21 +1470,101 @@ namespace StreamCore.Demo.WinForms
 
             if (sourceMode == PublisherSourceMode.StillImage)
             {
-                config.InputKind = StreamCorePublisherInputKind.StillImage;
+                config.InputKind = StreamCorePublisherInputKind.AppRawFeed;
+                config.InputBindingId = "capture:still-image";
                 config.EnableAudio = false;
                 config.EnableVideo = true;
-                config.ImageInput.ImagePath = publisherMediaFileTextBox.Text.Trim();
-                config.ImageInput.TargetFps = (int)publisherFpsBox.Value;
-                config.ImageInput.LoopEnabled = true;
                 return config;
             }
 
-            config.InputKind = StreamCorePublisherInputKind.MediaFile;
+            config.InputKind = StreamCorePublisherInputKind.AppRawFeed;
+            config.InputBindingId = "capture:audio-file";
             config.EnableAudio = true;
             config.EnableVideo = false;
-            config.FileInput.FilePath = publisherAudioFileTextBox.Text.Trim();
-            config.FileInput.LoopEnabled = true;
             return config;
+        }
+
+        private static bool UsesPublisherMediaCapture(
+            PublisherSourceMode sourceMode,
+            PublisherAudioMode audioMode)
+        {
+            return sourceMode == PublisherSourceMode.VideoFile
+                || sourceMode == PublisherSourceMode.StillImage
+                || (sourceMode == PublisherSourceMode.None
+                    && audioMode == PublisherAudioMode.AudioFile);
+        }
+
+        /// <summary>
+        /// Opens a file-backed capture session and routes its decoded raw frames into
+        /// the already-started publisher. Direct file input is intentionally not part
+        /// of the publisher ABI; capture owns file decoding and optional local preview.
+        /// </summary>
+        private bool StartPublisherMediaInput(PublisherSourceMode sourceMode)
+        {
+            if (publisherSession == null)
+            {
+                return false;
+            }
+
+            StopPublisherMediaInputSession();
+            publisherMediaInputSession = new StreamCoreCaptureSession();
+
+            StreamCoreCaptureConfig config = StreamCoreCaptureConfig.CreateDefault();
+            ResolutionPreset resolution = SelectedResolution(publisherResolutionComboBox, 1280, 720);
+            bool isAudioOnly = sourceMode == PublisherSourceMode.None;
+            bool isStillImage = sourceMode == PublisherSourceMode.StillImage;
+
+            config.SessionName = "dotnet-winforms-publisher-media-input";
+            config.SourceKind = StreamCoreCaptureSourceKind.MediaFile;
+            config.SourceId = isAudioOnly
+                ? publisherAudioFileTextBox.Text.Trim()
+                : publisherMediaFileTextBox.Text.Trim();
+            config.DisplayId = string.Empty;
+            config.EnableAudio = !isStillImage;
+            config.EnableVideo = !isAudioOnly;
+            config.AudioVolumePercent = publisherAudioVolumeTrackBar.Value;
+            config.PreferredWidth = config.EnableVideo ? resolution.Width : 0;
+            config.PreferredHeight = config.EnableVideo ? resolution.Height : 0;
+            config.PreferredFps = config.EnableVideo ? (int)publisherFpsBox.Value : 0;
+            config.SampleRate = config.EnableAudio
+                ? SelectedValue(publisherAudioSampleRateComboBox, 48000)
+                : 0;
+            config.ChannelCount = config.EnableAudio ? 2 : 0;
+            config.PreviewMode = sourceMode == PublisherSourceMode.VideoFile
+                ? StreamCoreCapturePreviewMode.Auto
+                : StreamCoreCapturePreviewMode.Disabled;
+            config.PreferredBackend = StreamCoreCaptureBackend.Auto;
+
+            StreamCoreResult setConfig = publisherMediaInputSession.SetConfig(config);
+            StreamCoreResult setSink = publisherMediaInputSession.SetPublisherSink(publisherSession);
+            StreamCoreResult setPreview = StreamCoreResult.Ok;
+            if (sourceMode == PublisherSourceMode.VideoFile && publisherPreviewCheckBox.Checked)
+            {
+                setPreview = publisherMediaInputSession.SetWindowsPreviewRenderTarget(
+                    publisherPreviewPanel.Handle,
+                    publisherPreviewPanel.Width,
+                    publisherPreviewPanel.Height);
+            }
+            StreamCoreCapturePreflightResult preflight = publisherMediaInputSession.Preflight();
+            StreamCoreCallResult start = publisherMediaInputSession.Start();
+
+            LogPublisher(
+                "media_input set_config=" + setConfig
+                + " publisher_sink=" + setSink
+                + " preview_target=" + setPreview
+                + " preflight=" + preflight.Call.Result + "/" + SafePreflight(preflight.Preflight)
+                + " start=" + start.Result + " " + start.ErrorText);
+
+            if (setConfig == StreamCoreResult.Ok
+                && setSink == StreamCoreResult.Ok
+                && preflight.Call.Result == StreamCoreResult.Ok
+                && start.Result == StreamCoreResult.Ok)
+            {
+                return true;
+            }
+
+            StopPublisherMediaInputSession();
+            return false;
         }
 
         private string BuildPublisherBinding(PublisherSourceMode sourceMode, PublisherAudioMode audioMode)
@@ -1377,11 +1631,38 @@ namespace StreamCore.Demo.WinForms
             }
         }
 
+        private void StopPublisherMediaInputSession()
+        {
+            if (publisherMediaInputSession != null)
+            {
+                publisherMediaInputSession.Dispose();
+                publisherMediaInputSession = null;
+            }
+        }
+
         private void ApplyPublisherPreviewToggle()
         {
             PublisherSourceMode sourceMode = SelectedValue(
                 publisherSourceComboBox,
                 PublisherSourceMode.Camera);
+            if (sourceMode == PublisherSourceMode.VideoFile
+                && publisherMediaInputSession != null)
+            {
+                if (publisherPreviewCheckBox.Checked)
+                {
+                    publisherMediaInputSession.SetWindowsPreviewRenderTarget(
+                        publisherPreviewPanel.Handle,
+                        publisherPreviewPanel.Width,
+                        publisherPreviewPanel.Height);
+                }
+                else
+                {
+                    publisherMediaInputSession.ClearPreviewRenderTarget();
+                }
+                UpdatePublisherUi();
+                return;
+            }
+
             if (!PublisherPreviewAvailableForSelection(sourceMode))
             {
                 StopPublisherPreviewSession();
@@ -1425,6 +1706,19 @@ namespace StreamCore.Demo.WinForms
                 return;
             }
 
+            if (sourceMode == PublisherSourceMode.VideoFile)
+            {
+                if (publisherMediaInputSession != null)
+                {
+                    publisherMediaInputSession.SetWindowsPreviewRenderTarget(
+                        publisherPreviewPanel.Handle,
+                        publisherPreviewPanel.Width,
+                        publisherPreviewPanel.Height);
+                }
+                UpdatePublisherUi();
+                return;
+            }
+
             try
             {
                 StreamCoreCaptureSourceInfo previewSource = SelectedCaptureSource(publisherVideoSourceComboBox);
@@ -1455,9 +1749,7 @@ namespace StreamCore.Demo.WinForms
                 }
                 else
                 {
-                    config.SourceKind = StreamCoreCaptureSourceKind.MediaFile;
-                    config.SourceId = publisherMediaFileTextBox.Text.Trim();
-                    config.DisplayId = string.Empty;
+                    return;
                 }
                 config.EnableAudio = false;
                 config.EnableVideo = true;
@@ -1501,6 +1793,7 @@ namespace StreamCore.Demo.WinForms
 
         private void StopPublisher()
         {
+            StopPublisherMediaInputSession();
             StopPublisherPreviewSession();
 
             if (publisherSession != null)
@@ -2115,6 +2408,11 @@ namespace StreamCore.Demo.WinForms
             {
                 publisherFileModeRow.Visible = sourceMode == PublisherSourceMode.VideoFile;
             }
+            bool isWhip = IsWhipPublisherTarget();
+            if (publisherWhipBearerTokenRow != null)
+            {
+                publisherWhipBearerTokenRow.Visible = isWhip;
+            }
             if (publisherVideoDetailRow != null)
             {
                 publisherVideoDetailRow.Visible = usesVideoDevice || usesMediaFile;
@@ -2128,16 +2426,25 @@ namespace StreamCore.Demo.WinForms
             publisherAudioFileTextBox.Enabled = usesAudioFile;
             publisherAudioSourceComboBox.Enabled = usesAudioDevice;
             publisherFileModeComboBox.Enabled = sourceMode == PublisherSourceMode.VideoFile;
-            publisherVideoCodecComboBox.Enabled = sourceMode != PublisherSourceMode.VideoFile;
-            publisherAudioCodecComboBox.Enabled = sourceMode != PublisherSourceMode.VideoFile;
-            publisherAudioProfileComboBox.Enabled = audioMode != PublisherAudioMode.None;
+            publisherVideoCodecComboBox.Enabled =
+                !isWhip && sourceMode != PublisherSourceMode.VideoFile;
+            publisherAudioCodecComboBox.Enabled =
+                !isWhip && sourceMode != PublisherSourceMode.VideoFile;
+            publisherAudioProfileComboBox.Enabled =
+                !isWhip && audioMode != PublisherAudioMode.None;
             publisherAudioSampleRateComboBox.Enabled = audioMode != PublisherAudioMode.None;
             publisherAudioBitrateComboBox.Enabled = audioMode != PublisherAudioMode.None;
+            publisherRtmpHevcModeComboBox.Enabled =
+                !isWhip &&
+                publisherPublishUrlTextBox.Text.Trim().StartsWith(
+                    "rtmp://",
+                    StringComparison.OrdinalIgnoreCase);
             publisherRunButton.Text = publisherSession == null ?
                 T("Start publish", "启动推流") :
                 T("Stop publish", "停止推流");
 
-            if (publisherPreviewSession != null)
+            if (publisherPreviewSession != null
+                || (publisherMediaInputSession != null && publisherPreviewCheckBox.Checked))
             {
                 ShowPreviewOverlay(publisherPreviewOverlayLabel, string.Empty, false);
             }
@@ -2626,6 +2933,9 @@ namespace StreamCore.Demo.WinForms
         private void ApplyAutorunPublisherOptions()
         {
             ApplyTextEnvironment("STREAMCORE_DEMO_DOTNET_PUBLISHER_URL", publisherPublishUrlTextBox);
+            ApplyTextEnvironment(
+                "STREAMCORE_DEMO_DOTNET_PUBLISHER_WHIP_BEARER_TOKEN",
+                publisherWhipBearerTokenTextBox);
             ApplyTextEnvironment("STREAMCORE_DEMO_DOTNET_PUBLISHER_MEDIA_FILE", publisherMediaFileTextBox);
             ApplyTextEnvironment("STREAMCORE_DEMO_DOTNET_PUBLISHER_AUDIO_FILE", publisherAudioFileTextBox);
             ApplyNumericEnvironment("STREAMCORE_DEMO_DOTNET_PUBLISHER_BITRATE_KBPS", publisherVideoBitrateBox);
@@ -2696,6 +3006,10 @@ namespace StreamCore.Demo.WinForms
             if (audioCodec == "aac")
             {
                 SelectComboByValue(publisherAudioCodecComboBox, "aac");
+            }
+            else if (audioCodec == "opus")
+            {
+                SelectComboByValue(publisherAudioCodecComboBox, "opus");
             }
 
             string hevcMode = EnvironmentValue("STREAMCORE_DEMO_DOTNET_PUBLISHER_RTMP_HEVC_MODE");
@@ -3023,6 +3337,12 @@ namespace StreamCore.Demo.WinForms
         private static string SafePreflight(StreamCorePublisherPreflight preflight)
         {
             return preflight == null ? "null" : preflight.IsReadyToStart.ToString();
+        }
+
+        private static string FormatResult(StreamCoreResult result)
+        {
+            return ((int)result).ToString(CultureInfo.InvariantCulture)
+                + "/" + result.Name();
         }
 
         private static SplitContainer CreatePageSplit()
