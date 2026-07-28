@@ -15,7 +15,7 @@ final class DemoNetworkSupport {
     static final String EMULATOR_HOST_LOOPBACK = "10.0.2.2";
     static final int RTMP_PORT = 1935;
     static final int RTSP_PORT = 8554;
-    static final String DEFAULT_DEVELOPMENT_RTMP_HOST = "192.0.2.10";
+    static final String DEFAULT_DEVELOPMENT_RTMP_HOST = "192.0.2.1";
     static final int RTMP_REACHABILITY_TIMEOUT_MS = 400;
 
     private DemoNetworkSupport() {

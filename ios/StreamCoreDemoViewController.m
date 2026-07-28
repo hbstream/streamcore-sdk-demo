@@ -953,7 +953,7 @@ static uint32_t HBRCrc32(NSData* data)
                               forControlEvents:UIControlEventValueChanged];
     self.publisherAudioVolumeLabel =
         [self newFieldLabelWithText:[self uiTextEnglish:@"Capture Volume: 80%" chinese:@"采集音量：80%"]];
-    self.publisherURLEdit = [self addTextFieldWithText:@"rtmp://192.0.2.10:1935/live/ios_demo"
+    self.publisherURLEdit = [self addTextFieldWithText:@"rtmp://192.0.2.1:1935/live/ios_demo"
                                            placeholder:[self uiTextEnglish:@"Publish URL" chinese:@"推流地址"]];
     self.publisherLabel = [[UILabel alloc] initWithFrame:(CGRect){0, 0, 0, 0}];
     self.publisherLabel.numberOfLines = 0;
@@ -1022,7 +1022,7 @@ static uint32_t HBRCrc32(NSData* data)
     self.gbUpperPasswordEdit = [self addTextFieldWithText:@"123456"
                                                placeholder:[self uiTextEnglish:@"SIP Password" chinese:@"SIP 密码"]];
     self.gbUpperPasswordEdit.secureTextEntry = YES;
-    self.gbUpperIpEdit = [self addTextFieldWithText:@"192.0.2.10"
+    self.gbUpperIpEdit = [self addTextFieldWithText:@"192.0.2.1"
                                         placeholder:[self uiTextEnglish:@"Upper Platform IP" chinese:@"上级平台 IP"]];
     self.gbUpperPortEdit = [self addTextFieldWithText:@"5060"
                                           placeholder:[self uiTextEnglish:@"Upper Port" chinese:@"上级端口"]];
@@ -1476,7 +1476,7 @@ static uint32_t HBRCrc32(NSData* data)
 
 - (NSString*)defaultPublisherURLText
 {
-    return @"rtmp://192.0.2.10:1935/live/ios_demo";
+    return @"rtmp://192.0.2.1:1935/live/ios_demo";
 }
 
 - (HBRStreamCoreCaptureSourceKind)selectedCaptureSourceKind

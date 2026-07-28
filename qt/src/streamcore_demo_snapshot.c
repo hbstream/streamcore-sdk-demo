@@ -336,11 +336,11 @@ static void streamcore_demo_collect_gb28181_snapshot(
     config.local_endpoint.ip = "0.0.0.0";
     config.local_endpoint.port = 5060;
     config.local_endpoint.transport = STREAMCORE_GB28181_TRANSPORT_UDP;
-    config.upper_platform_endpoint.ip = "192.0.2.10";
+    config.upper_platform_endpoint.ip = "192.0.2.1";
     config.upper_platform_endpoint.port = 5060;
     config.upper_platform_endpoint.transport = STREAMCORE_GB28181_TRANSPORT_UDP;
     config.default_answer.session_name = "StreamCore Demo";
-    config.default_answer.media_endpoint.ip = "192.0.2.10";
+    config.default_answer.media_endpoint.ip = "192.0.2.1";
     config.default_answer.media_endpoint.port = 30000;
     config.default_answer.media_endpoint.transport =
         STREAMCORE_GB28181_TRANSPORT_UDP;
@@ -554,7 +554,7 @@ static streamcore_result_t streamcore_demo_collect_publisher_snapshots(
 
     streamcore_publisher_get_default_config(&config);
     config.session_name = "desktop_publish_local_capture";
-    config.publish_url = "rtmp://192.0.2.10:1935/live/desktop";
+    config.publish_url = "rtmp://192.0.2.1:1935/live/desktop";
     config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_LOCAL_CAPTURE;
     config.input_binding_id = "desktop+microphone";
     config.enable_audio = 1;
@@ -573,7 +573,7 @@ static streamcore_result_t streamcore_demo_collect_publisher_snapshots(
 
     streamcore_publisher_get_default_config(&config);
     config.session_name = "app_publish_encoded_forced";
-    config.publish_url = "rtmp://192.0.2.10:1935/live/encoder-1";
+    config.publish_url = "rtmp://192.0.2.1:1935/live/encoder-1";
     config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_APP_ENCODED_FEED;
     config.input_binding_id = "encoder:camera-1";
     config.enable_audio = 1;
@@ -606,7 +606,7 @@ static streamcore_result_t streamcore_demo_collect_publisher_snapshots(
 
     streamcore_publisher_get_default_config(&config);
     config.session_name = "file_publish_passthrough";
-    config.publish_url = "rtmp://192.0.2.10:1935/live/file";
+    config.publish_url = "rtmp://192.0.2.1:1935/live/file";
     config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_APP_ENCODED_FEED;
     config.input_binding_id = "capture:media-file:C:/media/demo_record.mp4";
     config.enable_audio = 1;
@@ -635,7 +635,7 @@ static streamcore_result_t streamcore_demo_collect_publisher_snapshots(
 
     streamcore_publisher_get_default_config(&config);
     config.session_name = "image_publish_fixed_fps";
-    config.publish_url = "rtmp://192.0.2.10:1935/live/poster";
+    config.publish_url = "rtmp://192.0.2.1:1935/live/poster";
     config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_APP_RAW_FEED;
     config.input_binding_id = "capture:still-image:C:/media/poster.png";
     config.enable_audio = 0;

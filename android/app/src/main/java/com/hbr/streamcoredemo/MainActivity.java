@@ -5200,7 +5200,7 @@ public final class MainActivity extends AppCompatActivity {
                 + " | Local: "
                 + readTextInput(gbLocalIdInput, "34020000001320000001")
                 + "\nUpper: "
-                + readTextInput(gbUpperIpInput, "192.0.2.10")
+                + readTextInput(gbUpperIpInput, "192.0.2.1")
                 + ":"
                 + readIntInput(gbUpperPortInput, 5060, 1, 65535)
                 + " | Media: "

@@ -1847,7 +1847,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_url_edit_ = new QLineEdit(publisher_page);
     publisher_url_edit_->setObjectName(QString::fromUtf8("publisher_url_edit"));
     publisher_url_edit_->setText(
-        QString::fromUtf8("rtmp://192.0.2.10:1935/live/desktop_demo"));
+        QString::fromUtf8("rtmp://192.0.2.1:1935/live/desktop_demo"));
     publisher_url_edit_->setCursorPosition(0);
     publisher_url_edit_->setToolTip(
         UiText("RTMP / RTSP / SRT destination, or an HTTP(S) WHIP endpoint.",
@@ -2001,7 +2001,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     player_url_edit_ = new QLineEdit(player_page);
     player_url_edit_->setObjectName(QString::fromUtf8("player_url_edit"));
     player_url_edit_->setText(
-        QString::fromUtf8("rtmp://192.0.2.10:1935/live/local_native"));
+        QString::fromUtf8("rtmp://192.0.2.1:1935/live/local_native"));
     player_url_edit_->setCursorPosition(0);
     player_latency_preset_combo_ = new QComboBox(player_page);
     player_latency_preset_combo_->setObjectName(
@@ -2210,7 +2210,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     gb28181_upper_ip_edit_ = new QLineEdit(gb28181_page);
     gb28181_upper_ip_edit_->setObjectName(
         QString::fromUtf8("gb28181_upper_ip_edit"));
-    gb28181_upper_ip_edit_->setText(QString::fromUtf8("192.0.2.10"));
+    gb28181_upper_ip_edit_->setText(QString::fromUtf8("192.0.2.1"));
     gb28181_upper_port_edit_ = new QLineEdit(gb28181_page);
     gb28181_upper_port_edit_->setObjectName(
         QString::fromUtf8("gb28181_upper_port_edit"));
@@ -4307,7 +4307,7 @@ void StreamCoreDemoQtWindow::StartPublisher()
 
     if (publish_url.isEmpty())
     {
-        publish_url = QByteArray("rtmp://192.0.2.10:1935/live/local_native");
+        publish_url = QByteArray("rtmp://192.0.2.1:1935/live/local_native");
     }
 
     streamcore_publisher_get_default_config(&config);
@@ -7030,7 +7030,7 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
     const QByteArray player_url =
         player_url_edit_ != nullptr ?
             player_url_edit_->text().trimmed().toUtf8() :
-            QByteArray("rtmp://192.0.2.10:1935/live/local_native");
+            QByteArray("rtmp://192.0.2.1:1935/live/local_native");
 
     if (player == nullptr || native_handle == nullptr)
     {
@@ -7910,7 +7910,7 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
     active_player_url_ = player_url_edit_->text().trimmed().toUtf8();
     if (active_player_url_.isEmpty())
     {
-        active_player_url_ = QByteArray("rtmp://192.0.2.10:1935/live/local_native");
+        active_player_url_ = QByteArray("rtmp://192.0.2.1:1935/live/local_native");
     }
 
     if (player == nullptr || native_handle == nullptr)
