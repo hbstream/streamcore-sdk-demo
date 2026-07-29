@@ -7,7 +7,7 @@
 
 ## English
 
-This repository contains public HBRun StreamCore SDK demo projects for desktop, mobile, and .NET applications. The samples use public SDK APIs only and cover playback, capture, publishing, recording, SRT, WHIP (WebRTC ingest), ONVIF, and GB28181 workflows.
+This repository contains public HBRun StreamCore SDK demo projects for desktop, mobile, and .NET applications. The samples use public SDK APIs only and cover playback, capture, publishing, recording, SRT, WHIP (WebRTC ingest), ONVIF, and GB28181 workflows. The Qt demo also shows asynchronous Capture Processor integration with side-by-side original and processed previews.
 
 ### Project Layout
 
@@ -35,7 +35,7 @@ Runnable demo packages include a license bound to the matching demo process or a
 
 ## 简体中文
 
-本仓库提供 HBRun StreamCore SDK 的公开演示工程，覆盖桌面端、移动端和 .NET。示例仅调用公开 SDK API，可用于验证播放、采集、推流、录像、SRT、WHIP（WebRTC 推流）、ONVIF 和 GB28181 等能力。
+本仓库提供 HBRun StreamCore SDK 的公开演示工程，覆盖桌面端、移动端和 .NET。示例仅调用公开 SDK API，可用于验证播放、采集、推流、录像、SRT、WHIP（WebRTC 推流）、ONVIF 和 GB28181 等能力。Qt Demo 还提供异步 Capture Processor 示例，可同时查看处理前与处理后的画面。
 
 ### 工程目录
 

@@ -6,6 +6,8 @@ Publisher 页面支持 WHIP 端点和可选 Bearer Token。选择 WHIP 后，视
 
 本目录提供基于 Qt 6 Widgets 的桌面演示程序，覆盖 Windows、Linux 和 macOS。界面包含推流、拉流播放、ONVIF、GB28181 与授权状态，可作为 C/C++ 集成参考。
 
+Publisher 页面还提供异步 Capture Processor 示例：勾选处理前后对比后，Demo 会以黑白处理演示 `REPLACE` 路径，并同时显示原始画面与最终推流画面。示例回调返回后由工作线程完成处理，用于说明上层异步算法的接入方式。
+
 ## 准备 SDK
 
 从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取目标平台 SDK 包，解压到当前目录下的 `sdk/<platform_arch>/`。例如：

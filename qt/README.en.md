@@ -6,6 +6,8 @@ This directory contains the Qt 6 Widgets desktop demo for Windows, Linux, and ma
 
 The Publisher page supports WHIP endpoints and an optional Bearer Token. Selecting WHIP locks the video and audio codecs to H.264 and Opus. The SDK still rejects incompatible configuration or encoded-packet parameters with `-6 / UNSUPPORTED_MEDIA_CODEC` and a detailed actual/required codec message.
 
+The Publisher page also includes an asynchronous Capture Processor example. When before/after comparison is enabled, the demo applies a monochrome `REPLACE` path and shows the original and final published frames side by side. Processing finishes on a worker thread after the SDK callback returns, illustrating integration with an asynchronous application algorithm.
+
 ## Prepare the SDK
 
 Download the target platform package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and extract it to `sdk/<platform_arch>/` under this directory. For example:
