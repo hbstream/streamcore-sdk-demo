@@ -149,6 +149,7 @@ static uint32_t HBRCrc32(NSData* data)
 @property(nonatomic, assign) HBRDemoLanguageMode languageMode;
 @property(nonatomic, strong) HBRStreamCorePlayerSession* playerSession;
 @property(nonatomic, strong) HBRStreamCoreCaptureSession* captureSession;
+@property(nonatomic, strong) HBRStreamCoreCaptureSession* publisherCaptureSession;
 @property(nonatomic, strong) HBRStreamCorePublisherSession* publisherSession;
 @property(nonatomic, strong) HBRStreamCoreGB28181Session* gb28181Session;
 @property(nonatomic, strong) NSTimer* gb28181PollTimer;
@@ -1524,7 +1525,7 @@ static uint32_t HBRCrc32(NSData* data)
     if (self.publisherInputControl.selectedSegmentIndex == 0 ||
         self.publisherInputControl.selectedSegmentIndex == 1)
     {
-        return HBRStreamCorePublisherInputKindLocalCapture;
+        return HBRStreamCorePublisherInputKindAppRawFeed;
     }
     return HBRStreamCorePublisherInputKindAppEncodedFeed;
 }
@@ -1690,7 +1691,7 @@ static uint32_t HBRCrc32(NSData* data)
     config.transcodeOptions.targetHeight = enableVideo ? (NSInteger)targetSize.height : 0;
     config.transcodeOptions.targetFps = 25;
     config.transcodeOptions.targetGopFrames = 50;
-    if (config.inputKind == HBRStreamCorePublisherInputKindLocalCapture)
+    if (config.inputKind == HBRStreamCorePublisherInputKindAppRawFeed)
     {
         config.inputBindingIdentifier =
             self.publisherInputControl.selectedSegmentIndex == 1 ?
@@ -1736,6 +1737,32 @@ static uint32_t HBRCrc32(NSData* data)
         config.transcodeOptions.videoMode = HBRStreamCorePublisherTranscodeModeAuto;
     }
     return [self.publisherSession configureWithConfig:config];
+}
+
+- (HBRStreamCoreOperationStatus*)configurePublisherCaptureSession
+{
+    if (self.publisherCaptureSession == nil)
+    {
+        self.publisherCaptureSession = [[HBRStreamCoreCaptureSession alloc] init];
+    }
+
+    HBRStreamCoreCaptureConfig* config = [self.publisherCaptureSession defaultConfig];
+    config.sessionName = @"ios_demo_publisher_capture";
+    config.sourceKind =
+        self.publisherInputControl.selectedSegmentIndex == 1 ?
+            HBRStreamCoreCaptureSourceKindDesktop :
+            HBRStreamCoreCaptureSourceKindCamera;
+    config.sourceIdentifier =
+        config.sourceKind == HBRStreamCoreCaptureSourceKindCamera ?
+            @"front_camera" :
+            @"";
+    config.audioSourceKind = HBRStreamCoreCaptureSourceKindMicrophone;
+    config.enableAudio = [self selectedPublisherAudioEnabled];
+    config.audioVolumePercent =
+        (NSInteger)[self selectedPublisherAudioVolumePercent];
+    config.enableVideo = [self selectedPublisherVideoEnabled];
+    config.targetFrameRate = 25;
+    return [self.publisherCaptureSession configureWithConfig:config];
 }
 
 - (void)preflightPlayer
@@ -1869,9 +1896,53 @@ static uint32_t HBRCrc32(NSData* data)
 - (void)startPublisher
 {
     HBRStreamCoreOperationStatus* configureStatus = [self configurePublisherSession];
+    const BOOL usesCapture =
+        [self selectedPublisherInputKind] ==
+        HBRStreamCorePublisherInputKindAppRawFeed;
+    HBRStreamCoreOperationStatus* captureConfigureStatus = nil;
+    HBRStreamCoreOperationStatus* connectStatus = nil;
+    HBRStreamCoreCapturePreflight* capturePreflight = nil;
+    if (configureStatus.resultCode == 0 && usesCapture)
+    {
+        captureConfigureStatus = [self configurePublisherCaptureSession];
+        if (captureConfigureStatus.resultCode == 0)
+        {
+            connectStatus =
+                [self.publisherCaptureSession connectPublisher:self.publisherSession];
+            if (connectStatus.resultCode == 0)
+            {
+                capturePreflight = [self.publisherCaptureSession preflight];
+            }
+        }
+    }
     HBRStreamCorePublisherPreflight* preflight = [self.publisherSession preflight];
     HBRStreamCoreOperationStatus* startStatus =
-        preflight.readyToStart ? [self.publisherSession start] : preflight.status;
+        preflight.readyToStart &&
+                (!usesCapture ||
+                 (capturePreflight != nil && capturePreflight.readyToStart)) ?
+            [self.publisherSession start] :
+            (usesCapture && capturePreflight != nil &&
+                    !capturePreflight.readyToStart ?
+                capturePreflight.status :
+                (usesCapture && connectStatus != nil &&
+                        connectStatus.resultCode != 0 ?
+                    connectStatus :
+                    (usesCapture && captureConfigureStatus != nil &&
+                            captureConfigureStatus.resultCode != 0 ?
+                        captureConfigureStatus :
+                        preflight.status)));
+    HBRStreamCoreOperationStatus* captureStartStatus = nil;
+    if (startStatus.resultCode == 0 && usesCapture)
+    {
+        captureStartStatus = [self.publisherCaptureSession start];
+        if (captureStartStatus.resultCode != 0)
+        {
+            [self.publisherCaptureSession stop];
+            [self.publisherCaptureSession connectPublisher:nil];
+            [self.publisherSession stop];
+            startStatus = captureStartStatus;
+        }
+    }
     HBRStreamCorePublisherRuntimeInfo* runtimeInfo = [self.publisherSession runtimeInfo];
     NSString* publisherOutcome = [self uiTextEnglish:@"Publish started." chinese:@"推流已启动。"];
     if (startStatus.resultCode != 0)
@@ -1879,7 +1950,7 @@ static uint32_t HBRCrc32(NSData* data)
         publisherOutcome = [self uiTextEnglish:@"Publish failed to start." chinese:@"推流启动失败。"];
     }
     self.publisherLabel.text = [NSString stringWithFormat:
-        @"%@\nURL: %@\ninput: %@\nconfigure: %@\nstart: %@\nruntime: %@",
+        @"%@\nURL: %@\ninput: %@\nconfigure: %@\nstart: %@%@\nruntime: %@",
         publisherOutcome,
         [self publisherURLText],
         [NSString stringWithFormat:@"%@ %@/%@ %@",
@@ -1889,6 +1960,12 @@ static uint32_t HBRCrc32(NSData* data)
             [self selectedPublisherResolutionText]],
         [self statusText:configureStatus],
         [self statusText:startStatus],
+        usesCapture ?
+            [NSString stringWithFormat:@"\ncapture: %@",
+                [self statusText:captureStartStatus != nil ?
+                    captureStartStatus :
+                    (connectStatus != nil ? connectStatus : captureConfigureStatus)]] :
+            @"",
         runtimeInfo.stateSummary];
     [self setOperationAction:@"publisher.start"
                         code:[NSString stringWithFormat:@"%ld", (long)startStatus.resultCode]
@@ -1940,6 +2017,8 @@ static uint32_t HBRCrc32(NSData* data)
 
 - (void)stopPublisher
 {
+    [self.publisherCaptureSession stop];
+    [self.publisherCaptureSession connectPublisher:nil];
     [self.publisherSession stop];
     HBRStreamCorePublisherRuntimeInfo* runtimeInfo = [self.publisherSession runtimeInfo];
     self.publisherLabel.text = [NSString stringWithFormat:@"%@\nruntime: %@",
