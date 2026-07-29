@@ -553,14 +553,14 @@ static streamcore_result_t streamcore_demo_collect_publisher_snapshots(
     outSnapshot->publisher_case_count = 0;
 
     streamcore_publisher_get_default_config(&config);
-    config.session_name = "desktop_publish_local_capture";
+    config.session_name = "desktop_publish_capture_raw";
     config.publish_url = "rtmp://192.0.2.1:1935/live/desktop";
-    config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_LOCAL_CAPTURE;
-    config.input_binding_id = "desktop+microphone";
+    config.input_kind = STREAMCORE_PUBLISHER_INPUT_KIND_APP_RAW_FEED;
+    config.input_binding_id = "capture:desktop+microphone";
     config.enable_audio = 1;
     config.enable_video = 1;
     result = streamcore_demo_collect_publisher_case(
-        "local_capture",
+        "capture_raw_feed",
         &config,
         &outSnapshot->publisher_cases[outSnapshot->publisher_case_count],
         outErrorText,

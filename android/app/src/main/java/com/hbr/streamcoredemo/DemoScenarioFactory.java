@@ -66,8 +66,8 @@ final class DemoScenarioFactory {
         session.setConfig(StreamCorePublisher.Config.newBuilder()
                 .sessionName("android_demo_publish_local")
                 .publishUrl(defaultDevelopmentRtmpUrl("local"))
-                .inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                .inputBindingId("camera_main")
+                .inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                .inputBindingId("capture:camera_main")
                 .transcodeRequirementCallback(
                         report -> callbackMessage[0] = "required: " + report.summary)
                 .build());

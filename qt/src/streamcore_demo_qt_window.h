@@ -389,15 +389,22 @@ private:
     QComboBox* publisher_file_mode_combo_;
     QLabel* publisher_file_mode_label_;
     QCheckBox* publisher_preview_toggle_;
+    QCheckBox* publisher_processor_compare_toggle_;
     QComboBox* publisher_resolution_combo_;
     QLineEdit* publisher_video_bitrate_edit_;
     QLineEdit* publisher_fps_edit_;
     QLineEdit* publisher_gop_edit_;
     QLabel* publisher_source_summary_label_;
     QWidget* publisher_preview_frame_;
+    QLabel* publisher_original_preview_caption_;
     QWidget* publisher_preview_widget_;
     QLabel* publisher_preview_label_;
     QLabel* publisher_watermark_label_;
+    QWidget* publisher_processed_preview_frame_;
+    QWidget* publisher_processed_preview_column_;
+    QWidget* publisher_processed_preview_widget_;
+    QLabel* publisher_processed_preview_label_;
+    QLabel* publisher_processed_watermark_label_;
     QLabel* publisher_status_label_;
     QWidget* publisher_video_detail_row_;
     QWidget* publisher_audio_detail_row_;
@@ -474,7 +481,6 @@ private:
     streamcore_player_handle active_player_;
     streamcore_publisher_handle active_publisher_;
     streamcore_capture_handle active_publisher_capture_;
-    streamcore_capture_handle active_publisher_audio_capture_;
 #if STREAMCORE_DEMO_ENABLE_GB28181
     // 接收上级 INVITE，自动应答后记录后续媒体发送目标。
     static void OnGb28181InviteReceived(

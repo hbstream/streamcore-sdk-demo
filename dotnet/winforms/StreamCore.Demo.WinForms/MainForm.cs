@@ -1444,8 +1444,8 @@ namespace StreamCore.Demo.WinForms
                 || (sourceMode == PublisherSourceMode.None
                     && (audioMode == PublisherAudioMode.Microphone || audioMode == PublisherAudioMode.SystemAudio)))
             {
-                config.InputKind = StreamCorePublisherInputKind.LocalCapture;
-                config.InputBindingId = BuildPublisherBinding(sourceMode, audioMode);
+                config.InputKind = StreamCorePublisherInputKind.AppRawFeed;
+                config.InputBindingId = "capture:" + BuildPublisherBinding(sourceMode, audioMode);
                 return config;
             }
 
@@ -1488,10 +1488,8 @@ namespace StreamCore.Demo.WinForms
             PublisherSourceMode sourceMode,
             PublisherAudioMode audioMode)
         {
-            return sourceMode == PublisherSourceMode.VideoFile
-                || sourceMode == PublisherSourceMode.StillImage
-                || (sourceMode == PublisherSourceMode.None
-                    && audioMode == PublisherAudioMode.AudioFile);
+            return sourceMode != PublisherSourceMode.None
+                || audioMode != PublisherAudioMode.None;
         }
 
         /// <summary>
@@ -1512,16 +1510,58 @@ namespace StreamCore.Demo.WinForms
             StreamCoreCaptureConfig config = StreamCoreCaptureConfig.CreateDefault();
             ResolutionPreset resolution = SelectedResolution(publisherResolutionComboBox, 1280, 720);
             bool isAudioOnly = sourceMode == PublisherSourceMode.None;
-            bool isStillImage = sourceMode == PublisherSourceMode.StillImage;
+            PublisherAudioMode audioMode = SelectedValue(
+                publisherAudioComboBox,
+                PublisherAudioMode.None);
+            if (audioMode == PublisherAudioMode.AudioFile && !isAudioOnly)
+            {
+                LogPublisher(T(
+                    "A separate audio file cannot be mixed into this video source by one Capture session.",
+                    "单个 Capture 会话暂不把独立音频文件混入当前视频来源。"));
+                StopPublisherMediaInputSession();
+                return false;
+            }
+            StreamCoreCaptureSourceInfo videoSource =
+                SelectedCaptureSource(publisherVideoSourceComboBox);
+            StreamCoreCaptureSourceInfo audioSource =
+                SelectedCaptureSource(publisherAudioSourceComboBox);
 
             config.SessionName = "dotnet-winforms-publisher-media-input";
-            config.SourceKind = StreamCoreCaptureSourceKind.MediaFile;
-            config.SourceId = isAudioOnly
-                ? publisherAudioFileTextBox.Text.Trim()
-                : publisherMediaFileTextBox.Text.Trim();
-            config.DisplayId = string.Empty;
-            config.EnableAudio = !isStillImage;
+            if (sourceMode == PublisherSourceMode.Camera)
+            {
+                config.SourceKind = StreamCoreCaptureSourceKind.Camera;
+                config.SourceId = videoSource == null ? string.Empty : videoSource.SourceId;
+                config.DisplayId = videoSource == null ? string.Empty : videoSource.DisplayId;
+            }
+            else if (sourceMode == PublisherSourceMode.Desktop)
+            {
+                config.SourceKind = StreamCoreCaptureSourceKind.Desktop;
+                config.SourceId = videoSource == null ? string.Empty : videoSource.SourceId;
+                config.DisplayId = videoSource == null ? string.Empty : videoSource.DisplayId;
+            }
+            else
+            {
+                config.SourceKind = StreamCoreCaptureSourceKind.MediaFile;
+                config.SourceId = isAudioOnly
+                    ? publisherAudioFileTextBox.Text.Trim()
+                    : publisherMediaFileTextBox.Text.Trim();
+                config.DisplayId = string.Empty;
+            }
+            config.EnableAudio = sourceMode == PublisherSourceMode.VideoFile
+                || audioMode != PublisherAudioMode.None;
             config.EnableVideo = !isAudioOnly;
+            if (audioMode == PublisherAudioMode.Microphone)
+            {
+                config.AudioSourceKind = StreamCoreCaptureSourceKind.Microphone;
+                config.AudioSourceId =
+                    audioSource == null ? string.Empty : audioSource.SourceId;
+            }
+            else if (audioMode == PublisherAudioMode.SystemAudio)
+            {
+                config.AudioSourceKind = StreamCoreCaptureSourceKind.SystemAudio;
+                config.AudioSourceId =
+                    audioSource == null ? string.Empty : audioSource.SourceId;
+            }
             config.AudioVolumePercent = publisherAudioVolumeTrackBar.Value;
             config.PreferredWidth = config.EnableVideo ? resolution.Width : 0;
             config.PreferredHeight = config.EnableVideo ? resolution.Height : 0;
@@ -1536,9 +1576,10 @@ namespace StreamCore.Demo.WinForms
             config.PreferredBackend = StreamCoreCaptureBackend.Auto;
 
             StreamCoreResult setConfig = publisherMediaInputSession.SetConfig(config);
-            StreamCoreResult setSink = publisherMediaInputSession.SetPublisherSink(publisherSession);
+            StreamCoreResult connectPublisher =
+                publisherMediaInputSession.ConnectPublisher(publisherSession);
             StreamCoreResult setPreview = StreamCoreResult.Ok;
-            if (sourceMode == PublisherSourceMode.VideoFile && publisherPreviewCheckBox.Checked)
+            if (config.EnableVideo && publisherPreviewCheckBox.Checked)
             {
                 setPreview = publisherMediaInputSession.SetWindowsPreviewRenderTarget(
                     publisherPreviewPanel.Handle,
@@ -1550,13 +1591,13 @@ namespace StreamCore.Demo.WinForms
 
             LogPublisher(
                 "media_input set_config=" + setConfig
-                + " publisher_sink=" + setSink
+                + " connect_publisher=" + connectPublisher
                 + " preview_target=" + setPreview
                 + " preflight=" + preflight.Call.Result + "/" + SafePreflight(preflight.Preflight)
                 + " start=" + start.Result + " " + start.ErrorText);
 
             if (setConfig == StreamCoreResult.Ok
-                && setSink == StreamCoreResult.Ok
+                && connectPublisher == StreamCoreResult.Ok
                 && preflight.Call.Result == StreamCoreResult.Ok
                 && start.Result == StreamCoreResult.Ok)
             {
@@ -1645,8 +1686,7 @@ namespace StreamCore.Demo.WinForms
             PublisherSourceMode sourceMode = SelectedValue(
                 publisherSourceComboBox,
                 PublisherSourceMode.Camera);
-            if (sourceMode == PublisherSourceMode.VideoFile
-                && publisherMediaInputSession != null)
+            if (publisherMediaInputSession != null)
             {
                 if (publisherPreviewCheckBox.Checked)
                 {

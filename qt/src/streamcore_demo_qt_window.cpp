@@ -12,9 +12,11 @@
 #include "streamcore/streamcore_sdk.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <thread>
 
 #include <QAbstractItemView>
 #include <QApplication>
@@ -51,6 +53,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRunnable>
 #include <QResizeEvent>
 #include <QScrollBar>
 #include <QScrollArea>
@@ -66,6 +69,7 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QTimer>
+#include <QThreadPool>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -731,6 +735,117 @@ int AddCappedLogPackageEntries(
     }
     return added_count;
 }
+
+void RunPublisherComparisonVideoTask(
+    streamcore_video_process process,
+    streamcore_video_frame_ref inputFrame,
+    int processorDelayMs) noexcept
+{
+    try
+    {
+        if (processorDelayMs > 0)
+        {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(processorDelayMs));
+        }
+
+        streamcore_frame_export_plan_t export_plan = {};
+        streamcore_capture_video_frame_t output_frame = {};
+        streamcore_video_frame_ref replacement_frame = nullptr;
+        streamcore_video_process_result_t process_result = {};
+        process_result.action = STREAMCORE_PROCESSOR_ACTION_ERROR;
+
+        if (streamcore_video_frame_get_cpu_export_plan(
+                inputFrame,
+                STREAMCORE_VIDEO_PIXEL_FORMAT_RGB32,
+                &export_plan) != STREAMCORE_RESULT_OK ||
+            export_plan.supported == 0)
+        {
+            streamcore_video_process_finish(process, &process_result);
+            return;
+        }
+
+        std::vector<unsigned char> output_data(export_plan.required_size);
+        if (streamcore_video_frame_copy_as(
+                inputFrame,
+                STREAMCORE_VIDEO_PIXEL_FORMAT_RGB32,
+                output_data.data(),
+                output_data.size(),
+                &output_frame) != STREAMCORE_RESULT_OK)
+        {
+            streamcore_video_process_finish(process, &process_result);
+            return;
+        }
+
+        const size_t complete_pixel_bytes =
+            output_frame.size - (output_frame.size % 4);
+        for (size_t offset = 0; offset < complete_pixel_bytes; offset += 4)
+        {
+            const unsigned int gray =
+                (static_cast<unsigned int>(output_data[offset]) * 29U +
+                 static_cast<unsigned int>(output_data[offset + 1]) * 150U +
+                 static_cast<unsigned int>(output_data[offset + 2]) * 77U) >>
+                8;
+            output_data[offset] = static_cast<unsigned char>(gray);
+            output_data[offset + 1] = static_cast<unsigned char>(gray);
+            output_data[offset + 2] = static_cast<unsigned char>(gray);
+        }
+
+        output_frame.data = output_data.data();
+        if (streamcore_video_frame_create_cpu_copy(
+                &output_frame,
+                &replacement_frame) != STREAMCORE_RESULT_OK)
+        {
+            streamcore_video_process_finish(process, &process_result);
+            return;
+        }
+
+        process_result.action = STREAMCORE_PROCESSOR_ACTION_REPLACE;
+        process_result.replacement_frame = replacement_frame;
+        if (streamcore_video_process_finish(process, &process_result) !=
+            STREAMCORE_RESULT_OK)
+        {
+            streamcore_video_frame_release(replacement_frame);
+        }
+    }
+    catch (...)
+    {
+        streamcore_video_process_result_t process_result = {};
+        process_result.action = STREAMCORE_PROCESSOR_ACTION_ERROR;
+        streamcore_video_process_finish(process, &process_result);
+    }
+}
+
+// Demo-only visual Processor. It deliberately returns from the SDK callback
+// before doing the pixel work so the sample exercises the same asynchronous
+// process/input lifetime contract used by inference workers.
+void ProcessPublisherComparisonVideo(
+    streamcore_video_process process,
+    streamcore_video_frame_ref inputFrame,
+    void*)
+{
+    try
+    {
+        const int processor_delay_ms = std::clamp(
+            EnvironmentInt("STREAMCORE_DEMO_QT_PROCESSOR_DELAY_MS", 0),
+            0,
+            2000);
+        QRunnable* task = QRunnable::create(
+            [process, inputFrame, processor_delay_ms]() {
+                RunPublisherComparisonVideoTask(
+                    process,
+                    inputFrame,
+                    processor_delay_ms);
+            });
+        QThreadPool::globalInstance()->start(task);
+    }
+    catch (...)
+    {
+        streamcore_video_process_result_t process_result = {};
+        process_result.action = STREAMCORE_PROCESSOR_ACTION_ERROR;
+        streamcore_video_process_finish(process, &process_result);
+    }
+}
 }
 
 StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
@@ -761,15 +876,22 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       publisher_file_mode_combo_(nullptr),
       publisher_file_mode_label_(nullptr),
       publisher_preview_toggle_(nullptr),
+      publisher_processor_compare_toggle_(nullptr),
       publisher_resolution_combo_(nullptr),
       publisher_video_bitrate_edit_(nullptr),
       publisher_fps_edit_(nullptr),
       publisher_gop_edit_(nullptr),
       publisher_source_summary_label_(nullptr),
       publisher_preview_frame_(nullptr),
+      publisher_original_preview_caption_(nullptr),
       publisher_preview_widget_(nullptr),
       publisher_preview_label_(nullptr),
       publisher_watermark_label_(nullptr),
+      publisher_processed_preview_frame_(nullptr),
+      publisher_processed_preview_column_(nullptr),
+      publisher_processed_preview_widget_(nullptr),
+      publisher_processed_preview_label_(nullptr),
+      publisher_processed_watermark_label_(nullptr),
       publisher_status_label_(nullptr),
       publisher_video_detail_row_(nullptr),
       publisher_audio_detail_row_(nullptr),
@@ -846,7 +968,6 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       active_player_(nullptr),
       active_publisher_(nullptr),
       active_publisher_capture_(nullptr),
-      active_publisher_audio_capture_(nullptr),
 #if STREAMCORE_DEMO_ENABLE_GB28181
       active_gb28181_(nullptr),
       active_gb28181_media_capture_(nullptr),
@@ -976,13 +1097,15 @@ bool StreamCoreDemoQtWindow::eventFilter(QObject* watched, QEvent* event)
         return true;
     }
     if ((watched == publisher_preview_frame_ ||
+         watched == publisher_processed_preview_frame_ ||
          watched == desktop_render_target_frame_ ||
          watched == gb28181_preview_frame_) &&
         event != nullptr &&
         (event->type() == QEvent::Resize || event->type() == QEvent::Show))
     {
         ApplyPreviewDisplayMode();
-        if (watched == publisher_preview_frame_ &&
+        if ((watched == publisher_preview_frame_ ||
+             watched == publisher_processed_preview_frame_) &&
             active_publisher_capture_ != nullptr &&
             IsPublisherPreviewEnabled())
         {
@@ -1176,11 +1299,16 @@ bool StreamCoreDemoQtWindow::CurrentPublisherSelectionSupportsPreview() const
     const int file_mode = ComboValueOrIndex(
         publisher_file_mode_combo_,
         kPublisherFileModeAuto);
+    const bool processor_compare_enabled =
+        publisher_processor_compare_toggle_ != nullptr &&
+        publisher_processor_compare_toggle_->isChecked();
 
     return source_index == kPublisherSourceCamera ||
         source_index == kPublisherSourceDesktop ||
+        source_index == kPublisherSourceImage ||
         (source_index == kPublisherSourceVideoFile &&
-            file_mode == kPublisherFileModeForceTranscode);
+            (file_mode == kPublisherFileModeForceTranscode ||
+                processor_compare_enabled));
 }
 
 void StreamCoreDemoQtWindow::ApplyPublisherPreviewToggle()
@@ -1192,7 +1320,12 @@ void StreamCoreDemoQtWindow::ApplyPublisherPreviewToggle()
     }
 
     streamcore_render_target_t preview_target = {};
+    streamcore_render_target_t processed_preview_target = {};
     streamcore_render_target_t* preview_target_ptr = nullptr;
+    streamcore_render_target_t* processed_preview_target_ptr = nullptr;
+    const bool processor_compare_enabled =
+        publisher_processor_compare_toggle_ != nullptr &&
+        publisher_processor_compare_toggle_->isChecked();
     if (IsPublisherPreviewEnabled())
     {
         if (publisher_preview_widget_ == nullptr ||
@@ -1209,17 +1342,55 @@ void StreamCoreDemoQtWindow::ApplyPublisherPreviewToggle()
             return;
         }
         preview_target_ptr = &preview_target;
+        if (processor_compare_enabled)
+        {
+            if (publisher_processed_preview_widget_ == nullptr ||
+                !BuildStreamCoreRenderTargetForWidget(
+                    publisher_processed_preview_widget_,
+                    &processed_preview_target))
+            {
+                if (publisher_status_label_ != nullptr)
+                {
+                    publisher_status_label_->setText(UiText(
+                        "Publish running, but the processed preview surface is unavailable.",
+                        "推流已运行，但处理后预览目标当前不可用。"));
+                }
+                return;
+            }
+            processed_preview_target_ptr = &processed_preview_target;
+        }
     }
 
     const streamcore_result_t result =
         streamcore_capture_set_preview_render_target(
             active_publisher_capture_,
             preview_target_ptr);
-    if (result != STREAMCORE_RESULT_OK && publisher_status_label_ != nullptr)
+    const streamcore_result_t processed_result =
+        streamcore_capture_set_processed_preview_render_target(
+            active_publisher_capture_,
+            processed_preview_target_ptr);
+    if ((result != STREAMCORE_RESULT_OK ||
+         processed_result != STREAMCORE_RESULT_OK) &&
+        publisher_status_label_ != nullptr)
     {
         publisher_status_label_->setText(UiText(
             "Publish running, but the local preview toggle could not be applied.",
             "推流已运行，但本地预览开关应用失败。"));
+    }
+    if (publisher_processed_preview_label_ != nullptr)
+    {
+        if (processed_preview_target_ptr != nullptr &&
+            processed_result == STREAMCORE_RESULT_OK)
+        {
+            publisher_processed_preview_label_->hide();
+        }
+        else
+        {
+            publisher_processed_preview_label_->setText(UiText(
+                "PROCESSED PREVIEW OFF",
+                "处理后预览已关闭"));
+            publisher_processed_preview_label_->show();
+        }
     }
     if (publisher_preview_label_ != nullptr)
     {
@@ -1256,6 +1427,21 @@ void StreamCoreDemoQtWindow::ApplyPreviewDisplayMode()
         publisher_preview_label_->setGeometry(publisher_preview_content->geometry());
         publisher_preview_label_->raise();
     }
+    QWidget* publisher_processed_preview_content =
+        publisher_processed_preview_widget_ != nullptr ?
+            publisher_processed_preview_widget_ :
+            static_cast<QWidget*>(publisher_processed_preview_label_);
+    ApplyPreviewDisplayModeToWidget(
+        publisher_processed_preview_frame_,
+        publisher_processed_preview_content,
+        SelectedPublisherResolution());
+    if (publisher_processed_preview_label_ != nullptr &&
+        publisher_processed_preview_content != nullptr)
+    {
+        publisher_processed_preview_label_->setGeometry(
+            publisher_processed_preview_content->geometry());
+        publisher_processed_preview_label_->raise();
+    }
     ApplyPreviewDisplayModeToWidget(
         desktop_render_target_frame_,
         desktop_render_target_widget_,
@@ -1288,6 +1474,9 @@ void StreamCoreDemoQtWindow::UpdateDemoWatermarkLabels()
 {
     UpdateDemoWatermarkLabel(publisher_preview_frame_, publisher_watermark_label_);
     UpdateDemoWatermarkLabel(
+        publisher_processed_preview_frame_,
+        publisher_processed_watermark_label_);
+    UpdateDemoWatermarkLabel(
         desktop_render_target_frame_, player_watermark_label_, true);
     UpdateDemoWatermarkLabel(gb28181_preview_frame_, gb28181_watermark_label_);
 }
@@ -1316,6 +1505,7 @@ void StreamCoreDemoQtWindow::UpdateDemoWatermarkLabel(
 void StreamCoreDemoQtWindow::ApplyPreviewSurfaceRatios()
 {
     ApplyPreviewSurfaceRatio(publisher_preview_frame_);
+    ApplyPreviewSurfaceRatio(publisher_processed_preview_frame_);
     ApplyPreviewSurfaceRatio(desktop_render_target_frame_);
     ApplyPreviewSurfaceRatio(gb28181_preview_frame_);
 }
@@ -1926,6 +2116,18 @@ void StreamCoreDemoQtWindow::BuildUi()
         QString::fromUtf8("publisher_preview_toggle"));
     publisher_preview_toggle_->setChecked(
         EnvironmentFlag("STREAMCORE_DEMO_QT_PUBLISHER_PREVIEW", true));
+    publisher_processor_compare_toggle_ = new QCheckBox(
+        UiText("Before/after", "前后对比"),
+        publisher_page);
+    publisher_processor_compare_toggle_->setObjectName(
+        QString::fromUtf8("publisher_processor_compare_toggle"));
+    publisher_processor_compare_toggle_->setChecked(
+        EnvironmentFlag(
+            "STREAMCORE_DEMO_QT_PUBLISHER_PROCESSOR_COMPARE",
+            false));
+    publisher_processor_compare_toggle_->setToolTip(UiText(
+        "Runs an asynchronous monochrome Processor and shows original and final frames side by side.",
+        "运行异步黑白 Processor，并同时显示处理前与处理后的画面。"));
     publisher_resolution_combo_ = new QComboBox(publisher_page);
     publisher_resolution_combo_->setObjectName(
         QString::fromUtf8("publisher_resolution_combo"));
@@ -1953,7 +2155,7 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_preview_frame_ = new QWidget(publisher_page);
     publisher_preview_frame_->setObjectName(
         QString::fromUtf8("publisher_preview_frame"));
-    publisher_preview_frame_->setMinimumSize(520, kPreviewFrameMinHeight);
+    publisher_preview_frame_->setMinimumSize(300, kPreviewFrameMinHeight);
     publisher_preview_frame_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     publisher_preview_frame_->setStyleSheet(QString::fromUtf8(
         "QWidget#publisher_preview_frame { background: #111827; border: 1px solid #2F3A45; }"));
@@ -1978,6 +2180,46 @@ void StreamCoreDemoQtWindow::BuildUi()
         "预览"));
     publisher_watermark_label_ =
         CreateDemoWatermarkLabel(publisher_preview_frame_);
+    publisher_processed_preview_frame_ = new QWidget(publisher_page);
+    publisher_processed_preview_frame_->setObjectName(
+        QString::fromUtf8("publisher_processed_preview_frame"));
+    publisher_processed_preview_frame_->setMinimumSize(
+        300,
+        kPreviewFrameMinHeight);
+    publisher_processed_preview_frame_->setSizePolicy(
+        QSizePolicy::Expanding,
+        QSizePolicy::Preferred);
+    publisher_processed_preview_frame_->setStyleSheet(QString::fromUtf8(
+        "QWidget#publisher_processed_preview_frame { background: #111827; "
+        "border: 1px solid #2F3A45; }"));
+    publisher_processed_preview_frame_->installEventFilter(this);
+    publisher_processed_preview_widget_ =
+        new QWidget(publisher_processed_preview_frame_);
+    publisher_processed_preview_widget_->setObjectName(
+        QString::fromUtf8("publisher_processed_preview_widget"));
+    publisher_processed_preview_widget_->setAttribute(Qt::WA_NativeWindow);
+    publisher_processed_preview_widget_->setAutoFillBackground(true);
+    publisher_processed_preview_widget_->setStyleSheet(QString::fromUtf8(
+        "QWidget#publisher_processed_preview_widget { background: #111827; border: 0; }"));
+    QPalette publisher_processed_preview_palette =
+        publisher_processed_preview_widget_->palette();
+    publisher_processed_preview_palette.setColor(
+        QPalette::Window,
+        QColor(17, 24, 39));
+    publisher_processed_preview_widget_->setPalette(
+        publisher_processed_preview_palette);
+    publisher_processed_preview_label_ =
+        new QLabel(publisher_processed_preview_frame_);
+    publisher_processed_preview_label_->setObjectName(
+        QString::fromUtf8("publisher_processed_preview_label"));
+    publisher_processed_preview_label_->setAlignment(Qt::AlignCenter);
+    publisher_processed_preview_label_->setStyleSheet(QString::fromUtf8(
+        kPublisherPreviewLabelDefaultStyle));
+    publisher_processed_preview_label_->setText(UiText(
+        "Processed preview",
+        "处理后预览"));
+    publisher_processed_watermark_label_ =
+        CreateDemoWatermarkLabel(publisher_processed_preview_frame_);
     publisher_status_label_ = new QLabel(publisher_page);
     publisher_status_label_->setObjectName(
         QString::fromUtf8("publisher_status_label"));
@@ -2434,10 +2676,10 @@ void StreamCoreDemoQtWindow::BuildUi()
         this,
         [this](int value) {
             UpdateAudioVolumeLabels();
-            if (active_publisher_audio_capture_ != nullptr)
+            if (active_publisher_capture_ != nullptr)
             {
                 streamcore_capture_set_audio_volume(
-                    active_publisher_audio_capture_,
+                    active_publisher_capture_,
                     value);
             }
             UpdatePublisherSourceSummary();
@@ -2544,6 +2786,23 @@ void StreamCoreDemoQtWindow::BuildUi()
             UpdatePublisherSourceSummary();
         });
     connect(
+        publisher_processor_compare_toggle_,
+        &QCheckBox::toggled,
+        this,
+        [this](bool checked) {
+            if (publisher_original_preview_caption_ != nullptr)
+            {
+                publisher_original_preview_caption_->setVisible(checked);
+            }
+            if (publisher_processed_preview_column_ != nullptr)
+            {
+                publisher_processed_preview_column_->setVisible(checked);
+            }
+            UpdatePublisherSourceControls();
+            ApplyPreviewDisplayMode();
+            UpdatePublisherSourceSummary();
+        });
+    connect(
         publisher_resolution_combo_,
         QOverload<int>::of(&QComboBox::currentIndexChanged),
         this,
@@ -2572,8 +2831,7 @@ void StreamCoreDemoQtWindow::BuildUi()
         this,
         [this]() {
             if (active_publisher_ != nullptr ||
-                active_publisher_capture_ != nullptr ||
-                active_publisher_audio_capture_ != nullptr)
+                active_publisher_capture_ != nullptr)
             {
                 StopPublisher();
                 return;
@@ -2977,6 +3235,8 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_hevc_preview_editor->setLayout(publisher_hevc_preview_layout);
     publisher_hevc_preview_layout->addWidget(publisher_rtmp_hevc_combo_, 1);
     publisher_hevc_preview_layout->addWidget(publisher_preview_toggle_);
+    publisher_hevc_preview_layout->addWidget(
+        publisher_processor_compare_toggle_);
 
     publisher_file_mode_row_ = createFieldRow(
         publisher_page,
@@ -3057,7 +3317,56 @@ void StreamCoreDemoQtWindow::BuildUi()
     publisher_runtime_layout->addWidget(publisher_source_summary_label_);
     publisher_runtime_layout->addWidget(publisher_status_label_);
     publisher_runtime_layout->addWidget(publisher_runtime_log_, 1);
-    publisher_preview_layout->addWidget(publisher_preview_frame_, 0);
+    QWidget* publisher_preview_compare_widget = new QWidget(publisher_page);
+    QHBoxLayout* publisher_preview_compare_layout =
+        new QHBoxLayout(publisher_preview_compare_widget);
+    publisher_preview_compare_layout->setContentsMargins(0, 0, 0, 0);
+    publisher_preview_compare_layout->setSpacing(8);
+    QWidget* publisher_original_preview_column = new QWidget(
+        publisher_preview_compare_widget);
+    QVBoxLayout* publisher_original_preview_layout =
+        new QVBoxLayout(publisher_original_preview_column);
+    publisher_original_preview_layout->setContentsMargins(0, 0, 0, 0);
+    publisher_original_preview_layout->setSpacing(5);
+    publisher_original_preview_caption_ = new QLabel(
+        UiText("Original · before Processor", "原始画面 · Processor 前"),
+        publisher_original_preview_column);
+    publisher_original_preview_caption_->setStyleSheet(QString::fromUtf8(
+        "QLabel { color: #475569; font-size: 9pt; font-weight: 600; }"));
+    publisher_original_preview_layout->addWidget(
+        publisher_original_preview_caption_);
+    publisher_original_preview_caption_->setVisible(
+        publisher_processor_compare_toggle_->isChecked());
+    publisher_original_preview_layout->addWidget(
+        publisher_preview_frame_,
+        0);
+    publisher_processed_preview_column_ = new QWidget(
+        publisher_preview_compare_widget);
+    QVBoxLayout* publisher_processed_preview_layout =
+        new QVBoxLayout(publisher_processed_preview_column_);
+    publisher_processed_preview_layout->setContentsMargins(0, 0, 0, 0);
+    publisher_processed_preview_layout->setSpacing(5);
+    QLabel* publisher_processed_preview_caption = new QLabel(
+        UiText("Final · after Processor", "最终画面 · Processor 后"),
+        publisher_processed_preview_column_);
+    publisher_processed_preview_caption->setStyleSheet(QString::fromUtf8(
+        "QLabel { color: #475569; font-size: 9pt; font-weight: 600; }"));
+    publisher_processed_preview_layout->addWidget(
+        publisher_processed_preview_caption);
+    publisher_processed_preview_layout->addWidget(
+        publisher_processed_preview_frame_,
+        0);
+    publisher_preview_compare_layout->addWidget(
+        publisher_original_preview_column,
+        1);
+    publisher_preview_compare_layout->addWidget(
+        publisher_processed_preview_column_,
+        1);
+    publisher_processed_preview_column_->setVisible(
+        publisher_processor_compare_toggle_->isChecked());
+    publisher_preview_layout->addWidget(
+        publisher_preview_compare_widget,
+        0);
     publisher_preview_layout->addWidget(publisher_runtime_box, 0);
     publisher_preview_layout->addStretch(1);
     publisher_left_layout->addWidget(publisher_source_box);
@@ -3952,7 +4261,8 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
         publisher_audio_file_browse_button_ == nullptr ||
         publisher_file_mode_combo_ == nullptr ||
         publisher_rtmp_hevc_combo_ == nullptr ||
-        publisher_preview_toggle_ == nullptr)
+        publisher_preview_toggle_ == nullptr ||
+        publisher_processor_compare_toggle_ == nullptr)
     {
         return;
     }
@@ -4023,6 +4333,22 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
     const bool has_video_source =
         is_camera || is_desktop || is_video_file || is_image;
     publisher_rtmp_hevc_combo_->setEnabled(uses_rtmp && has_video_source);
+    const bool publisher_running =
+        active_publisher_ != nullptr ||
+        active_publisher_capture_ != nullptr;
+    publisher_processor_compare_toggle_->setEnabled(
+        has_video_source && !publisher_running);
+    if (!has_video_source &&
+        publisher_processor_compare_toggle_->isChecked())
+    {
+        const QSignalBlocker processor_blocker(
+            publisher_processor_compare_toggle_);
+        publisher_processor_compare_toggle_->setChecked(false);
+        if (publisher_processed_preview_column_ != nullptr)
+        {
+            publisher_processed_preview_column_->hide();
+        }
+    }
     UpdatePublisherTargetControls(false);
     publisher_preview_toggle_->setEnabled(CurrentPublisherSelectionSupportsPreview());
 
@@ -4144,7 +4470,8 @@ void StreamCoreDemoQtWindow::StartPublisher()
         publisher_audio_codec_combo_ == nullptr ||
         publisher_file_mode_combo_ == nullptr ||
         publisher_resolution_combo_ == nullptr ||
-        publisher_preview_label_ == nullptr)
+        publisher_preview_label_ == nullptr ||
+        publisher_processor_compare_toggle_ == nullptr)
     {
         return;
     }
@@ -4163,21 +4490,17 @@ void StreamCoreDemoQtWindow::StartPublisher()
     streamcore_publisher_runtime_info_t runtime_info = {};
     streamcore_media_file_profile_t media_file_profile = {};
     streamcore_capture_config_t capture_config;
-    streamcore_capture_config_t audio_capture_config;
     streamcore_capture_preflight_t capture_preflight = {};
-    streamcore_capture_preflight_t audio_capture_preflight = {};
     streamcore_capture_runtime_info_t capture_runtime_info = {};
     streamcore_render_target_t preview_target = {};
+    streamcore_render_target_t processed_preview_target = {};
     streamcore_publisher_handle publisher = nullptr;
     streamcore_capture_handle capture = nullptr;
-    streamcore_capture_handle audio_capture = nullptr;
     char error_text[STREAMCORE_TEXT_CAPACITY] = {};
     char media_file_probe_error[STREAMCORE_TEXT_CAPACITY] = {};
     char capture_error_text[STREAMCORE_TEXT_CAPACITY] = {};
-    char audio_capture_error_text[STREAMCORE_TEXT_CAPACITY] = {};
     QByteArray session_name("qt_desktop_publisher");
-    QByteArray capture_session_name("qt_publisher_video_capture");
-    QByteArray audio_capture_session_name("qt_publisher_audio_capture");
+    QByteArray capture_session_name("qt_publisher_capture");
     QByteArray publish_url = publisher_url_edit_->text().trimmed().toUtf8();
     QByteArray whip_bearer_token =
         publisher_whip_bearer_token_edit_ != nullptr ?
@@ -4237,18 +4560,21 @@ void StreamCoreDemoQtWindow::StartPublisher()
             publisher_audio_bitrate_combo_->currentData().toInt() :
             128;
     const bool source_has_video = source_index != kPublisherSourceNone;
+    const bool processor_compare_enabled =
+        source_has_video &&
+        publisher_processor_compare_toggle_->isChecked();
     const bool source_uses_file =
         source_index == kPublisherSourceVideoFile ||
         source_index == kPublisherSourceImage;
     const bool video_file_carries_audio =
         source_index == kPublisherSourceVideoFile;
-    bool use_video_capture_sink = source_has_video;
-    bool use_capture_preview_sink = use_video_capture_sink &&
+    const bool use_capture_sink =
+        source_has_video || audio_index != kPublisherAudioNone;
+    bool use_capture_preview_sink = source_has_video &&
         IsPublisherPreviewEnabled();
-    const bool use_audio_capture_sink = !video_file_carries_audio && (
-        audio_index == kPublisherAudioMicrophone ||
-        audio_index == kPublisherAudioSystem ||
-        audio_index == kPublisherAudioFile);
+    bool use_processed_preview_sink =
+        use_capture_preview_sink &&
+        processor_compare_enabled;
     const bool force_file_transcode =
         source_index == kPublisherSourceVideoFile &&
         file_mode == kPublisherFileModeForceTranscode;
@@ -4271,6 +4597,27 @@ void StreamCoreDemoQtWindow::StartPublisher()
             publisher_status_label_->setText(UiText(
                 "Publish failed: no video or audio source selected.",
                 "推流失败：未选择视频或音频来源。"));
+        }
+        UpdatePublisherButtons();
+        return;
+    }
+    if (source_has_video && audio_index == kPublisherAudioFile &&
+        !video_file_carries_audio)
+    {
+        const QString message = UiText(
+            "One Capture session does not mix a separate audio file into this video source.",
+            "单个 Capture 会话暂不把独立音频文件混入当前视频来源。");
+        SetOperationStatus(
+            QString::fromUtf8("publisher.start"),
+            QString::fromUtf8("-1"),
+            QString::fromUtf8("not_supported"),
+            message);
+        publisher_preview_label_->setText(message);
+        if (publisher_status_label_ != nullptr)
+        {
+            publisher_status_label_->setText(UiText(
+                "Publish failed: %1",
+                "推流失败：%1").arg(message));
         }
         UpdatePublisherButtons();
         return;
@@ -4467,6 +4814,7 @@ void StreamCoreDemoQtWindow::StartPublisher()
         const bool is_rtmp_target =
             publish_url.trimmed().toLower().startsWith("rtmp://");
         use_file_encoded_passthrough =
+            !processor_compare_enabled &&
             !force_file_transcode &&
             is_rtmp_target &&
             media_file_profile.rtmp_passthrough_supported != 0;
@@ -4488,6 +4836,7 @@ void StreamCoreDemoQtWindow::StartPublisher()
         if (config.enable_video == 0)
         {
             use_capture_preview_sink = false;
+            use_processed_preview_sink = false;
         }
         if (use_file_encoded_passthrough)
         {
@@ -4671,8 +5020,24 @@ void StreamCoreDemoQtWindow::StartPublisher()
                     "publisher preview surface is unavailable");
             }
         }
+        if (result == STREAMCORE_RESULT_OK &&
+            use_processed_preview_sink)
+        {
+            if (publisher_processed_preview_widget_ == nullptr ||
+                !BuildStreamCoreRenderTargetForWidget(
+                    publisher_processed_preview_widget_,
+                    &processed_preview_target))
+            {
+                result = STREAMCORE_RESULT_OPERATION_FAILED;
+                snprintf(
+                    capture_error_text,
+                    sizeof(capture_error_text),
+                    "%s",
+                    "publisher processed preview surface is unavailable");
+            }
+        }
     }
-    if (result == STREAMCORE_RESULT_OK && use_video_capture_sink)
+    if (result == STREAMCORE_RESULT_OK && use_capture_sink)
     {
         capture = streamcore_capture_create();
         if (capture == nullptr)
@@ -4685,23 +5050,15 @@ void StreamCoreDemoQtWindow::StartPublisher()
                 "failed to create capture session");
         }
     }
-    if (result == STREAMCORE_RESULT_OK && use_audio_capture_sink)
-    {
-        audio_capture = streamcore_capture_create();
-        if (audio_capture == nullptr)
-        {
-            result = STREAMCORE_RESULT_OPERATION_FAILED;
-            snprintf(
-                audio_capture_error_text,
-                sizeof(audio_capture_error_text),
-                "%s",
-                "failed to create audio capture session");
-        }
-    }
-    if (result == STREAMCORE_RESULT_OK && use_video_capture_sink)
+    if (result == STREAMCORE_RESULT_OK && use_capture_sink)
     {
         streamcore_capture_get_default_config(&capture_config);
         capture_config.session_name = capture_session_name.constData();
+        if (publisher_audio_source_combo_ != nullptr)
+        {
+            audio_source_id =
+                publisher_audio_source_combo_->currentData().toString().toUtf8();
+        }
         if (source_index == kPublisherSourceCamera)
         {
             capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_CAMERA;
@@ -4713,17 +5070,50 @@ void StreamCoreDemoQtWindow::StartPublisher()
             capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_DESKTOP;
             capture_config.display_id = desktop_display_id.constData();
         }
-        else
+        else if (source_index == kPublisherSourceVideoFile ||
+            source_index == kPublisherSourceImage)
         {
             capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_MEDIA_FILE;
             capture_config.source_id = file_path.constData();
         }
-        capture_config.enable_video =
-            source_index == kPublisherSourceVideoFile ?
-                config.enable_video : 1;
-        capture_config.enable_audio =
-            source_index == kPublisherSourceVideoFile ?
-                config.enable_audio : 0;
+        else if (audio_index == kPublisherAudioFile)
+        {
+            capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_MEDIA_FILE;
+            capture_config.source_id = audio_file_path.constData();
+        }
+        else if (audio_index == kPublisherAudioSystem)
+        {
+            capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO;
+            capture_config.source_id = audio_source_id.isEmpty() ?
+                nullptr : audio_source_id.constData();
+        }
+        else
+        {
+            capture_config.source_kind = STREAMCORE_CAPTURE_SOURCE_KIND_MICROPHONE;
+            capture_config.source_id = audio_source_id.isEmpty() ?
+                nullptr : audio_source_id.constData();
+        }
+        if (source_has_video && !video_file_carries_audio)
+        {
+            if (audio_index == kPublisherAudioSystem)
+            {
+                capture_config.audio_source_kind =
+                    STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO;
+                capture_config.audio_source_id = audio_source_id.isEmpty() ?
+                    nullptr : audio_source_id.constData();
+            }
+            else if (audio_index == kPublisherAudioMicrophone)
+            {
+                capture_config.audio_source_kind =
+                    STREAMCORE_CAPTURE_SOURCE_KIND_MICROPHONE;
+                capture_config.audio_source_id = audio_source_id.isEmpty() ?
+                    nullptr : audio_source_id.constData();
+            }
+        }
+        capture_config.enable_video = config.enable_video;
+        capture_config.enable_audio = config.enable_audio;
+        capture_config.audio_volume_percent =
+            publisher_audio_volume_percent;
         capture_config.preferred_width = selected_resolution.width() > 0 ?
             selected_resolution.width() :
             0;
@@ -4741,6 +5131,15 @@ void StreamCoreDemoQtWindow::StartPublisher()
         capture_config.sample_rate =
             publisher_audio_sample_rate > 0 ? publisher_audio_sample_rate : 48000;
         capture_config.channel_count = 2;
+        if (processor_compare_enabled &&
+            capture_config.enable_video != 0)
+        {
+            capture_config.video_processor_callback =
+                ProcessPublisherComparisonVideo;
+            capture_config.video_processor_callback_context = nullptr;
+            capture_config.video_processor_failure_mode =
+                STREAMCORE_PROCESSOR_FAILURE_MODE_PASSTHROUGH;
+        }
 
         result = streamcore_capture_set_config(capture, &capture_config);
         if (result == STREAMCORE_RESULT_OK && use_capture_preview_sink)
@@ -4749,9 +5148,17 @@ void StreamCoreDemoQtWindow::StartPublisher()
                 capture,
                 &preview_target);
         }
+        if (result == STREAMCORE_RESULT_OK &&
+            use_processed_preview_sink)
+        {
+            result =
+                streamcore_capture_set_processed_preview_render_target(
+                    capture,
+                    &processed_preview_target);
+        }
         if (result == STREAMCORE_RESULT_OK)
         {
-            result = streamcore_capture_set_publisher_sink(capture, publisher);
+            result = streamcore_capture_connect_publisher(capture, publisher);
         }
         if (result == STREAMCORE_RESULT_OK)
         {
@@ -4767,70 +5174,6 @@ void StreamCoreDemoQtWindow::StartPublisher()
             result = STREAMCORE_RESULT_OPERATION_FAILED;
         }
     }
-    if (result == STREAMCORE_RESULT_OK && use_audio_capture_sink)
-    {
-        streamcore_capture_get_default_config(&audio_capture_config);
-        audio_capture_config.session_name = audio_capture_session_name.constData();
-        if (publisher_audio_source_combo_ != nullptr)
-        {
-            audio_source_id =
-                publisher_audio_source_combo_->currentData().toString().toUtf8();
-        }
-        if (audio_index == kPublisherAudioSystem)
-        {
-            audio_capture_config.source_kind =
-                STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO;
-            audio_capture_config.source_id = audio_source_id.isEmpty() ?
-                nullptr :
-                audio_source_id.constData();
-        }
-        else if (audio_index == kPublisherAudioFile)
-        {
-            audio_capture_config.source_kind =
-                STREAMCORE_CAPTURE_SOURCE_KIND_MEDIA_FILE;
-            audio_capture_config.source_id = audio_file_path.constData();
-        }
-        else
-        {
-            audio_capture_config.source_kind =
-                STREAMCORE_CAPTURE_SOURCE_KIND_MICROPHONE;
-            audio_capture_config.source_id = audio_source_id.isEmpty() ?
-                nullptr :
-                audio_source_id.constData();
-        }
-        audio_capture_config.display_id = nullptr;
-        audio_capture_config.enable_video = 0;
-        audio_capture_config.enable_audio = 1;
-        audio_capture_config.audio_volume_percent =
-            publisher_audio_volume_percent;
-        audio_capture_config.preview_mode = STREAMCORE_CAPTURE_PREVIEW_MODE_DISABLED;
-        audio_capture_config.sample_rate =
-            publisher_audio_sample_rate > 0 ? publisher_audio_sample_rate : 48000;
-        audio_capture_config.channel_count = 2;
-
-        result = streamcore_capture_set_config(
-            audio_capture,
-            &audio_capture_config);
-        if (result == STREAMCORE_RESULT_OK)
-        {
-            result = streamcore_capture_set_publisher_sink(
-                audio_capture,
-                publisher);
-        }
-        if (result == STREAMCORE_RESULT_OK)
-        {
-            result = streamcore_capture_preflight(
-                audio_capture,
-                &audio_capture_preflight,
-                audio_capture_error_text,
-                sizeof(audio_capture_error_text));
-        }
-        if (result == STREAMCORE_RESULT_OK &&
-            audio_capture_preflight.is_ready_to_start == 0)
-        {
-            result = STREAMCORE_RESULT_OPERATION_FAILED;
-        }
-    }
     if (result == STREAMCORE_RESULT_OK)
     {
         result = streamcore_publisher_start(
@@ -4838,19 +5181,12 @@ void StreamCoreDemoQtWindow::StartPublisher()
             error_text,
             sizeof(error_text));
     }
-    if (result == STREAMCORE_RESULT_OK && use_video_capture_sink)
+    if (result == STREAMCORE_RESULT_OK && use_capture_sink)
     {
         result = streamcore_capture_start(
             capture,
             capture_error_text,
             sizeof(capture_error_text));
-    }
-    if (result == STREAMCORE_RESULT_OK && use_audio_capture_sink)
-    {
-        result = streamcore_capture_start(
-            audio_capture,
-            audio_capture_error_text,
-            sizeof(audio_capture_error_text));
     }
     if (publisher != nullptr)
     {
@@ -4864,12 +5200,11 @@ void StreamCoreDemoQtWindow::StartPublisher()
     {
         active_publisher_ = publisher;
         active_publisher_capture_ = capture;
-        active_publisher_audio_capture_ = audio_capture;
         SetOperationStatus(
             QString::fromUtf8("publisher.start"),
             QString::number(result),
             QString::fromUtf8("ok"),
-            use_video_capture_sink && !ToQString(capture_runtime_info.preview_summary).isEmpty() ?
+            use_capture_sink && !ToQString(capture_runtime_info.preview_summary).isEmpty() ?
                 ToQString(capture_runtime_info.preview_summary) :
                 ToQString(runtime_info.state_summary));
         if (publisher_status_label_ != nullptr)
@@ -4915,14 +5250,23 @@ void StreamCoreDemoQtWindow::StartPublisher()
                 }
             }
         }
+        if (publisher_processed_preview_label_ != nullptr)
+        {
+            if (use_processed_preview_sink)
+            {
+                publisher_processed_preview_label_->hide();
+            }
+            else
+            {
+                publisher_processed_preview_label_->setText(UiText(
+                    "PROCESSED PREVIEW OFF",
+                    "处理后预览已关闭"));
+                publisher_processed_preview_label_->show();
+            }
+        }
     }
     else
     {
-        if (audio_capture != nullptr)
-        {
-            streamcore_capture_stop(audio_capture);
-            streamcore_capture_destroy(audio_capture);
-        }
         if (capture != nullptr)
         {
             streamcore_capture_stop(capture);
@@ -4934,14 +5278,9 @@ void StreamCoreDemoQtWindow::StartPublisher()
             streamcore_publisher_destroy(publisher);
         }
         const QString capture_error = ToQString(capture_error_text);
-        const QString audio_capture_error = ToQString(audio_capture_error_text);
         const QString publisher_error = ToQString(error_text);
         QString reason;
-        if (!audio_capture_error.isEmpty())
-        {
-            reason = audio_capture_error;
-        }
-        else if (!capture_error.isEmpty())
+        if (!capture_error.isEmpty())
         {
             reason = capture_error;
         }
@@ -4949,12 +5288,7 @@ void StreamCoreDemoQtWindow::StartPublisher()
         {
             reason = publisher_error;
         }
-        else if (use_audio_capture_sink &&
-            audio_capture_preflight.is_ready_to_start == 0)
-        {
-            reason = ToQString(audio_capture_preflight.detail);
-        }
-        else if (use_video_capture_sink && capture_preflight.is_ready_to_start == 0)
+        else if (use_capture_sink && capture_preflight.is_ready_to_start == 0)
         {
             reason = ToQString(capture_preflight.detail);
         }
@@ -4991,14 +5325,18 @@ void StreamCoreDemoQtWindow::StartPublisher()
             "推流启动失败。\nresult=%1 (%2) ready=%3 state=%4\n%5")
                 .arg(result)
                 .arg(result_name)
-                .arg(use_video_capture_sink ?
-                    (use_audio_capture_sink &&
-                        audio_capture_preflight.is_ready_to_start == 0 ?
-                        audio_capture_preflight.is_ready_to_start :
-                        capture_preflight.is_ready_to_start) :
+                .arg(use_capture_sink ?
+                    capture_preflight.is_ready_to_start :
                     preflight.is_ready_to_start)
                 .arg(ToQString(streamcore_session_state_name(runtime_info.state)))
                 .arg(reason));
+        if (publisher_processed_preview_label_ != nullptr)
+        {
+            publisher_processed_preview_label_->setText(UiText(
+                "Processed preview is unavailable because capture did not start.",
+                "采集未能启动，处理后预览不可用。"));
+            publisher_processed_preview_label_->show();
+        }
     }
 
     UpdatePublisherButtons();
@@ -5007,24 +5345,12 @@ void StreamCoreDemoQtWindow::StartPublisher()
 void StreamCoreDemoQtWindow::StopPublisher()
 {
     if (active_publisher_ == nullptr &&
-        active_publisher_capture_ == nullptr &&
-        active_publisher_audio_capture_ == nullptr)
+        active_publisher_capture_ == nullptr)
     {
         UpdatePublisherButtons();
         return;
     }
 
-    if (active_publisher_audio_capture_ != nullptr)
-    {
-        SetOperationStatus(
-            QString::fromUtf8("publisher.stop.audio_capture"),
-            QString::fromUtf8("0"),
-            QString::fromUtf8("stopping"),
-            QString::fromUtf8("Stopping publisher audio capture."));
-        streamcore_capture_stop(active_publisher_audio_capture_);
-        streamcore_capture_destroy(active_publisher_audio_capture_);
-        active_publisher_audio_capture_ = nullptr;
-    }
     if (active_publisher_capture_ != nullptr)
     {
         SetOperationStatus(
@@ -5056,6 +5382,15 @@ void StreamCoreDemoQtWindow::StopPublisher()
             "Publisher stopped.",
             "Publisher stopped."));
     }
+    if (publisher_processed_preview_label_ != nullptr)
+    {
+        publisher_processed_preview_label_->setStyleSheet(QString::fromUtf8(
+            kPublisherPreviewLabelDefaultStyle));
+        publisher_processed_preview_label_->setText(UiText(
+            "Processed preview stopped.",
+            "处理后预览已停止。"));
+        publisher_processed_preview_label_->show();
+    }
     SetOperationStatus(
         QString::fromUtf8("publisher.stop"),
         QString::fromUtf8("0"),
@@ -5073,8 +5408,7 @@ void StreamCoreDemoQtWindow::StopPublisher()
 void StreamCoreDemoQtWindow::UpdatePublisherButtons()
 {
     const bool running = active_publisher_ != nullptr ||
-        active_publisher_capture_ != nullptr ||
-        active_publisher_audio_capture_ != nullptr;
+        active_publisher_capture_ != nullptr;
     const bool source_audio_empty =
         ComboValueOrIndex(publisher_source_combo_, kPublisherSourceCamera) ==
             kPublisherSourceNone &&
@@ -5086,6 +5420,14 @@ void StreamCoreDemoQtWindow::UpdatePublisherButtons()
         publisher_start_button_->setText(running ?
             UiText("Stop publish", "停止推流") :
             UiText("Start publish", "开始推流"));
+    }
+    if (publisher_processor_compare_toggle_ != nullptr)
+    {
+        const int source_index = ComboValueOrIndex(
+            publisher_source_combo_,
+            kPublisherSourceCamera);
+        publisher_processor_compare_toggle_->setEnabled(
+            !running && source_index != kPublisherSourceNone);
     }
 }
 
@@ -5123,6 +5465,9 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
     const int file_mode = ComboValueOrIndex(
         publisher_file_mode_combo_,
         kPublisherFileModeAuto);
+    const bool processor_compare_enabled =
+        publisher_processor_compare_toggle_ != nullptr &&
+        publisher_processor_compare_toggle_->isChecked();
     const bool is_rtmp_target = publisher_url_edit_->text()
         .trimmed()
         .startsWith(QString::fromUtf8("rtmp://"), Qt::CaseInsensitive);
@@ -5211,7 +5556,14 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
                 audio_source = profile.has_audio != 0 ?
                     QString::fromUtf8(profile.audio_codec_name) :
                     UiText("no audio track", "无音频轨");
-                if (file_mode == kPublisherFileModeForceTranscode)
+                if (processor_compare_enabled &&
+                    profile.has_video != 0)
+                {
+                    file_processing = UiText(
+                        "Processor + transcode",
+                        "Processor 处理后转码");
+                }
+                else if (file_mode == kPublisherFileModeForceTranscode)
                 {
                     file_processing = UiText(
                         "transcode",
@@ -5221,6 +5573,7 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
                     profile.rtmp_passthrough_supported != 0)
                 {
                     show_passthrough_preview_notice =
+                        !processor_compare_enabled &&
                         file_mode != kPublisherFileModeForceTranscode &&
                         profile.has_video != 0;
                     file_processing = UiText(
@@ -5288,7 +5641,9 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
     const bool preview_route_available = CurrentPublisherSelectionSupportsPreview();
     const QString preview_policy = preview_route_available ?
         (IsPublisherPreviewEnabled() ?
-            UiText("preview on", "预览开启") :
+            (processor_compare_enabled ?
+                UiText("before/after preview", "处理前后对比") :
+                UiText("preview on", "预览开启")) :
             UiText("preview off", "预览关闭")) :
         UiText("no preview route", "无预览路线");
     QString source_badge = source_detail;
@@ -5326,8 +5681,7 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
             .arg(file_badge));
     if (publisher_preview_label_ != nullptr &&
         active_publisher_ == nullptr &&
-        active_publisher_capture_ == nullptr &&
-        active_publisher_audio_capture_ == nullptr)
+        active_publisher_capture_ == nullptr)
     {
         publisher_preview_label_->show();
         if (show_passthrough_preview_notice)
@@ -5361,6 +5715,23 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
                     "预览"));
             }
         }
+    }
+    if (publisher_processed_preview_label_ != nullptr &&
+        processor_compare_enabled &&
+        active_publisher_ == nullptr &&
+        active_publisher_capture_ == nullptr)
+    {
+        publisher_processed_preview_label_->setStyleSheet(QString::fromUtf8(
+            kPublisherPreviewLabelDefaultStyle));
+        publisher_processed_preview_label_->setText(
+            IsPublisherPreviewEnabled() ?
+                UiText(
+                    "PROCESSED PREVIEW READY\n\nThe final monochrome frame will appear here after start.",
+                    "处理后预览已就绪\n\n开始后，这里会显示 Processor 输出的黑白画面。") :
+                UiText(
+                    "PROCESSED PREVIEW OFF\n\nEnable Preview to display both views.",
+                    "处理后预览已关闭\n\n开启“预览”后可同时显示两路画面。"));
+        publisher_processed_preview_label_->show();
     }
     UpdatePublisherButtons();
 }

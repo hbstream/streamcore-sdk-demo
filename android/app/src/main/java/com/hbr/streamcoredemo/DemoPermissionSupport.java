@@ -6,7 +6,6 @@ import androidx.annotation.NonNull;
 
 import com.hbr.streamcore.StreamCoreAndroidPermissions;
 import com.hbr.streamcore.StreamCoreCapture;
-import com.hbr.streamcore.StreamCorePublisher;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,18 +36,12 @@ final class DemoPermissionSupport {
         return result.toArray(new String[0]);
     }
 
-    static boolean hasPublisherLocalCapturePermissions(
-            @NonNull Context context,
-            @NonNull StreamCorePublisher.Config config) {
-        return missingPublisherLocalCapturePermissions(context, config).length == 0;
-    }
-
     @NonNull
-    static String[] missingPublisherLocalCapturePermissions(
+    static String[] missingCapturePermissions(
             @NonNull Context context,
-            @NonNull StreamCorePublisher.Config config) {
+            @NonNull StreamCoreCapture.Config config) {
         final List<String> permissions =
-                StreamCoreAndroidPermissions.runtimePermissionsForPublisher(config);
+                StreamCoreAndroidPermissions.runtimePermissionsForCapture(config);
         return toPermissionArray(
                 StreamCoreAndroidPermissions.missingRuntimePermissions(context, permissions));
     }
@@ -56,16 +49,6 @@ final class DemoPermissionSupport {
     @NonNull
     private static String[] missingMicrophoneCapturePermissions(@NonNull Context context) {
         return missingCapturePermissions(context, microphonePermissionConfig());
-    }
-
-    @NonNull
-    private static String[] missingCapturePermissions(
-            @NonNull Context context,
-            @NonNull StreamCoreCapture.Config config) {
-        final List<String> permissions =
-                StreamCoreAndroidPermissions.runtimePermissionsForCapture(config);
-        return toPermissionArray(
-                StreamCoreAndroidPermissions.missingRuntimePermissions(context, permissions));
     }
 
     @NonNull

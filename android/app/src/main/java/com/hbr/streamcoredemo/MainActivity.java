@@ -145,7 +145,7 @@ public final class MainActivity extends AppCompatActivity {
     private static final String EXTRA_GB_SOURCE_INDEX = "streamcore_demo_gb_source_index";
     private static final String AUTORUN_PLAYER = "player";
     private static final String AUTORUN_PUBLISHER_MATRIX = "publisher_matrix";
-    private static final String AUTORUN_PUBLISHER_LOCAL_CAPTURE = "publisher_local_capture";
+    private static final String AUTORUN_PUBLISHER_CAPTURE = "publisher_capture";
     private static final String AUTORUN_PUBLISHER_PREVIEW = "publisher_preview";
     private static final String AUTORUN_CAMERA_PREVIEW = "camera_preview";
     private static final String AUTORUN_GB28181 = "gb28181";
@@ -351,6 +351,7 @@ public final class MainActivity extends AppCompatActivity {
     private StreamCorePlayer.Session activePlayerPreviewSession;
     private StreamCoreCapture.Session activeCameraPreviewSession;
     private StreamCoreCapture.Session activePublisherPreviewSession;
+    private StreamCoreCapture.Session activePublisherCaptureSession;
     private StreamCorePublisher.Session activePublisherLocalCaptureSession;
     private StreamCoreCapture.Session activeDesktopCaptureSession;
     private StreamCoreCapture.Session activeGbPreviewSession;
@@ -638,7 +639,7 @@ public final class MainActivity extends AppCompatActivity {
             runPlayerAutorun(intent);
         } else if (AUTORUN_PUBLISHER_MATRIX.equals(mode)) {
             runPublisherMatrixAutorun(intent);
-        } else if (AUTORUN_PUBLISHER_LOCAL_CAPTURE.equals(mode)) {
+        } else if (AUTORUN_PUBLISHER_CAPTURE.equals(mode)) {
             runPublisherLocalCaptureAutorun(intent);
         } else if (AUTORUN_PUBLISHER_PREVIEW.equals(mode)) {
             runPublisherPreviewAutorun(intent);
@@ -3181,6 +3182,11 @@ public final class MainActivity extends AppCompatActivity {
         if (sourceChoice == PublisherSourceChoice.DESKTOP) {
             return false;
         }
+        if ((sourceChoice == PublisherSourceChoice.CAMERA_MICROPHONE
+                || sourceChoice == PublisherSourceChoice.STILL_IMAGE)
+                && selectedPublisherAudioChoice() == PublisherAudioChoice.FILE_AUDIO) {
+            return false;
+        }
         return sourceChoice != PublisherSourceChoice.NONE
                 || selectedPublisherAudioChoice() != PublisherAudioChoice.NONE;
     }
@@ -3302,7 +3308,10 @@ public final class MainActivity extends AppCompatActivity {
             labels.add(option.label);
         }
         publisherResolutionSpinner.setAdapter(buildSpinnerAdapter(labels));
-        int selection = 0;
+        int selection = preferredPublisherResolutionIndex(
+                publisherResolutionOptions,
+                1280,
+                720);
         if (previous != null) {
             for (int index = 0; index < publisherResolutionOptions.size(); ++index) {
                 final PublisherResolutionOption option = publisherResolutionOptions.get(index);
@@ -3314,6 +3323,31 @@ public final class MainActivity extends AppCompatActivity {
         }
         publisherResolutionSpinner.setSelection(selection);
         publisherResolutionSpinner.setEnabled(sourceChoice != PublisherSourceChoice.NONE);
+    }
+
+    private static int preferredPublisherResolutionIndex(
+            List<PublisherResolutionOption> options,
+            int preferredWidth,
+            int preferredHeight) {
+        if (options.isEmpty()) {
+            return 0;
+        }
+        final long preferredPixels = (long) preferredWidth * preferredHeight;
+        int nearestIndex = 0;
+        long nearestDistance = Long.MAX_VALUE;
+        for (int index = 0; index < options.size(); ++index) {
+            final PublisherResolutionOption option = options.get(index);
+            if (option.width == preferredWidth && option.height == preferredHeight) {
+                return index;
+            }
+            final long pixels = (long) option.width * option.height;
+            final long distance = Math.abs(pixels - preferredPixels);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = index;
+            }
+        }
+        return nearestIndex;
     }
 
     private void updatePublisherActionLabels() {
@@ -4015,10 +4049,21 @@ public final class MainActivity extends AppCompatActivity {
             return;
         }
 
-        final StreamCorePublisher.Config config =
-                buildSelectedPublisherPermissionConfig();
+        final StreamCorePublisher.Config publisherConfig =
+                buildSelectedPublisherConfig(report -> { });
+        final StreamCoreCapture.Config captureConfig =
+                buildSelectedPublisherCaptureConfig(true);
+        if (captureConfig == null) {
+            upsertPublisherScenario(buildSelectedPublisherSkippedScenario(
+                    StreamCoreResultCode.NOT_ENABLED,
+                    "publisher_capture_source_unsupported",
+                    "The selected source combination is not supported.",
+                    "Choose a source combination handled by one Capture session."));
+            renderInfoText();
+            return;
+        }
         final String[] missingPermissions =
-                DemoPermissionSupport.missingPublisherLocalCapturePermissions(this, config);
+                DemoPermissionSupport.missingCapturePermissions(this, captureConfig);
         if (missingPermissions.length > 0) {
             publisherPermissionRequestInProgress = true;
             publisherPermissionResumeDirectTransport = false;
@@ -4044,13 +4089,18 @@ public final class MainActivity extends AppCompatActivity {
             final boolean endpointReachable = isPublisherUrlReachable(publishUrl);
             final PublisherLocalCaptureStartResult startResult =
                     startSelectedPublisherTransportScenario(
-                            config,
+                            "selected_publish_transport",
+                            publisherConfig,
+                            captureConfig,
                             publishUrl,
                             endpointReachable);
             runOnUiThread(() -> {
                 publisherLocalCaptureRunInProgress = false;
-                if (startResult.activeSession != null) {
-                    activePublisherLocalCaptureSession = startResult.activeSession;
+                if (startResult.activePublisherSession != null) {
+                    activePublisherLocalCaptureSession =
+                            startResult.activePublisherSession;
+                    activePublisherCaptureSession =
+                            startResult.activeCaptureSession;
                 }
                 upsertPublisherScenario(startResult.scenario);
                 recordDemoStatus(
@@ -4073,7 +4123,7 @@ public final class MainActivity extends AppCompatActivity {
         if (selectedPublisherSourceChoice() != PublisherSourceChoice.CAMERA_MICROPHONE
                 || selectedPublisherAudioChoice() != PublisherAudioChoice.MICROPHONE) {
             upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_source_not_camera",
+                    "publisher_capture_source_not_camera",
                     "direct publish currently supports camera + microphone only.",
                     "selected source="
                             + publisherSourceLabel(selectedPublisherSourceChoice())
@@ -4086,7 +4136,7 @@ public final class MainActivity extends AppCompatActivity {
                 || activePublisherPreviewSession != null
                 || activeGbPreviewSession != null) {
             upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_preview_active",
+                    "publisher_capture_preview_active",
                     "direct publish is waiting for preview sessions to stop.",
                     "camera or publisher preview is active.",
                     readPublisherPublishUrl()));
@@ -4097,22 +4147,22 @@ public final class MainActivity extends AppCompatActivity {
             publisherPermissionRequestInProgress = true;
             publisherPermissionResumeDirectTransport = true;
             upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_permission_requesting",
+                    "publisher_capture_permission_requesting",
                     "requesting camera and microphone permission for publish.",
                     "permission prompt pending.",
                     readPublisherPublishUrl()));
             renderInfoText();
             publisherPermissionLauncher.launch(
-                    DemoPermissionSupport.missingPublisherLocalCapturePermissions(
+                    DemoPermissionSupport.missingCapturePermissions(
                             this,
-                            buildPublisherLocalCapturePermissionConfig()));
+                            buildSelectedPublisherCaptureConfig(false)));
             return;
         }
 
         final String publishUrl = readPublisherPublishUrl();
         if (!isPublisherUrlSyntaxValid(publishUrl)) {
             upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_url_invalid",
+                    "publisher_capture_url_invalid",
                     "Publish URL is invalid.",
                     "Enter a URL such as rtmp://"
                             + DEFAULT_DEVELOPMENT_RTMP_HOST
@@ -4132,8 +4182,12 @@ public final class MainActivity extends AppCompatActivity {
         final int videoBitrate = readPublisherVideoBitrateKbps();
         final int fps = readPublisherFps();
         final int gop = readPublisherGopFrames();
+        final StreamCoreSurfaceTarget previewTarget =
+                hasUsableSurface(publisherPreviewSurface)
+                        ? StreamCoreSurfaceTarget.fromView(publisherPreviewSurface)
+                        : StreamCoreSurfaceTarget.none();
         upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                "publisher_local_capture_starting",
+                "publisher_capture_starting",
                 "Publish is starting.",
                 "camera + microphone source selected.",
                 publishUrl,
@@ -4162,11 +4216,15 @@ public final class MainActivity extends AppCompatActivity {
                     videoWidth,
                     videoHeight,
                     fps,
-                    gop);
+                    gop,
+                    previewTarget);
             runOnUiThread(() -> {
                 publisherLocalCaptureRunInProgress = false;
-                if (startResult.activeSession != null) {
-                    activePublisherLocalCaptureSession = startResult.activeSession;
+                if (startResult.activePublisherSession != null) {
+                    activePublisherLocalCaptureSession =
+                            startResult.activePublisherSession;
+                    activePublisherCaptureSession =
+                            startResult.activeCaptureSession;
                 }
                 upsertPublisherScenario(startResult.scenario);
                 recordDemoStatus(
@@ -4181,7 +4239,7 @@ public final class MainActivity extends AppCompatActivity {
     private void stopPublisherLocalCaptureNativeTransport() {
         if (activePublisherLocalCaptureSession == null) {
             upsertPublisherScenario(buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_not_running",
+                    "publisher_capture_not_running",
                     "Publish is not running.",
                     "Start publish first.",
                     readPublisherPublishUrl()));
@@ -4190,6 +4248,7 @@ public final class MainActivity extends AppCompatActivity {
         }
 
         final StreamCorePublisher.Session session = activePublisherLocalCaptureSession;
+        final StreamCoreCapture.Session captureSession = activePublisherCaptureSession;
         PublisherScenarioResult previous =
                 findPublisherScenario("selected_publish_transport");
         if (previous == null) {
@@ -4205,12 +4264,16 @@ public final class MainActivity extends AppCompatActivity {
         final int fps = readPublisherFps();
         final int gop = readPublisherGopFrames();
         activePublisherLocalCaptureSession = null;
+        activePublisherCaptureSession = null;
         Thread worker = new Thread(() -> {
+            if (captureSession != null) {
+                captureSession.stop();
+            }
             session.stop();
             final StreamCorePublisher.RuntimeInfo runtimeAfterStop = session.getRuntimeInfo();
             final PublisherScenarioResult stoppedScenario = previousScenario == null
                     ? buildLocalCaptureNativeSkippedScenario(
-                    "publisher_local_capture_stopped",
+                    "publisher_capture_stopped",
                     "Publish stopped.",
                     "publisher runtime released.",
                     publishUrl,
@@ -4238,7 +4301,7 @@ public final class MainActivity extends AppCompatActivity {
                                 ? stoppedScenario.startStatus
                                 : buildStatus(
                                 StreamCoreResultCode.OK,
-                                "publisher_local_capture_stopped",
+                                "publisher_capture_stopped",
                                 "Publish stopped.",
                                 "publisher runtime released."));
                 renderInfoText();
@@ -4256,11 +4319,14 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void releasePublisherLocalCaptureSession() {
-        if (activePublisherLocalCaptureSession == null) {
-            return;
+        if (activePublisherCaptureSession != null) {
+            activePublisherCaptureSession.stop();
+            activePublisherCaptureSession = null;
         }
-        activePublisherLocalCaptureSession.stop();
-        activePublisherLocalCaptureSession = null;
+        if (activePublisherLocalCaptureSession != null) {
+            activePublisherLocalCaptureSession.stop();
+            activePublisherLocalCaptureSession = null;
+        }
     }
 
     private void renderInfoText() {
@@ -4580,12 +4646,12 @@ public final class MainActivity extends AppCompatActivity {
         final boolean audioGranted = hasRecordAudioPermission();
         final boolean resumeDirectTransport = publisherPermissionResumeDirectTransport;
         publisherPermissionResumeDirectTransport = false;
-        final StreamCorePublisher.Config permissionConfig = resumeDirectTransport
-                ? buildPublisherLocalCapturePermissionConfig()
-                : buildSelectedPublisherPermissionConfig();
-        if (DemoPermissionSupport.hasPublisherLocalCapturePermissions(
+        final StreamCoreCapture.Config permissionConfig =
+                buildSelectedPublisherCaptureConfig(false);
+        if (permissionConfig != null
+                && DemoPermissionSupport.missingCapturePermissions(
                 this,
-                permissionConfig)) {
+                permissionConfig).length == 0) {
             if (resumeDirectTransport) {
                 runPublisherLocalCaptureNativeTransport();
             } else {
@@ -4671,8 +4737,8 @@ public final class MainActivity extends AppCompatActivity {
         publisherSession.setConfig(StreamCorePublisher.Config.newBuilder()
                 .sessionName("android_demo_publisher_preview")
                 .publishUrl(publishUrl)
-                .inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                .inputBindingId("camera_preview")
+                .inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                .inputBindingId("capture:camera_preview")
                 .transcodeOptions(StreamCorePublisher.TranscodeOptions.newBuilder()
                         .audioMode(StreamCorePublisher.TranscodeMode.FORCE_TRANSCODE)
                         .videoMode(StreamCorePublisher.TranscodeMode.FORCE_TRANSCODE)
@@ -4786,7 +4852,7 @@ public final class MainActivity extends AppCompatActivity {
 
         switch (sourceChoice) {
             case DESKTOP:
-                builder.inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
+                builder.inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
                         .inputBindingId(audioChoice == PublisherAudioChoice.MICROPHONE
                                 ? "desktop:+microphone"
                                 : "desktop")
@@ -4840,22 +4906,88 @@ public final class MainActivity extends AppCompatActivity {
                                     .audioFormat(48000, 1)
                                     .build());
                 } else {
-                    builder.inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                            .inputBindingId("microphone")
+                    builder.inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                            .inputBindingId("capture:microphone")
                             .enableAudio(audioChoice == PublisherAudioChoice.MICROPHONE)
                             .enableVideo(false);
                 }
                 break;
             case CAMERA_MICROPHONE:
             default:
-                builder.inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                        .inputBindingId(localCameraPublisherBinding(
+                builder.inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                        .inputBindingId("capture:" + localCameraPublisherBinding(
                                 audioChoice == PublisherAudioChoice.MICROPHONE))
                         .enableAudio(audioChoice == PublisherAudioChoice.MICROPHONE)
                         .enableVideo(true);
                 break;
         }
         return builder.build();
+    }
+
+    private StreamCoreCapture.Config buildSelectedPublisherCaptureConfig(
+            boolean attachCameraPreview) {
+        final PublisherSourceChoice sourceChoice = selectedPublisherSourceChoice();
+        final PublisherAudioChoice audioChoice = selectedPublisherAudioChoice();
+        final boolean microphoneEnabled = audioChoice == PublisherAudioChoice.MICROPHONE;
+        final StreamCoreCapture.Config.Builder builder = StreamCoreCapture.Config.newBuilder()
+                .sessionName("android_demo_publish_capture")
+                .targetFrameRate(readPublisherFps())
+                .preferredVideoSize(readPublisherVideoWidth(), readPublisherVideoHeight());
+
+        switch (sourceChoice) {
+            case CAMERA_MICROPHONE:
+                builder.sourceKind(StreamCoreCapture.SourceKind.CAMERA)
+                        .sourceId(selectedCameraSourceId())
+                        .audioSource(StreamCoreCapture.SourceKind.MICROPHONE, "")
+                        .enableAudio(microphoneEnabled)
+                        .enableVideo(true);
+                if (attachCameraPreview && hasUsableSurface(publisherPreviewSurface)) {
+                    builder.previewTarget(StreamCoreSurfaceTarget.fromView(
+                            publisherPreviewSurface));
+                }
+                return builder.build();
+            case VIDEO_FILE:
+                return builder.sourceKind(StreamCoreCapture.SourceKind.MEDIA_FILE)
+                        .sourceId(readTextInput(
+                                publisherMediaPathInput,
+                                buildPreviewMediaPath()))
+                        .enableAudio(true)
+                        .enableVideo(true)
+                        .build();
+            case STILL_IMAGE:
+                if (audioChoice == PublisherAudioChoice.FILE_AUDIO) {
+                    return null;
+                }
+                return builder.sourceKind(StreamCoreCapture.SourceKind.MEDIA_FILE)
+                        .sourceId(readTextInput(
+                                publisherImagePathInput,
+                                buildDemoStillImagePath()))
+                        .audioSource(StreamCoreCapture.SourceKind.MICROPHONE, "")
+                        .enableAudio(microphoneEnabled)
+                        .enableVideo(true)
+                        .build();
+            case NONE:
+                if (audioChoice == PublisherAudioChoice.MICROPHONE) {
+                    return builder.sourceKind(StreamCoreCapture.SourceKind.MICROPHONE)
+                            .sourceId("")
+                            .enableAudio(true)
+                            .enableVideo(false)
+                            .build();
+                }
+                if (audioChoice == PublisherAudioChoice.FILE_AUDIO) {
+                    return builder.sourceKind(StreamCoreCapture.SourceKind.MEDIA_FILE)
+                            .sourceId(readTextInput(
+                                    publisherMediaPathInput,
+                                    buildDemoAudioPath()))
+                            .enableAudio(true)
+                            .enableVideo(false)
+                            .build();
+                }
+                return null;
+            case DESKTOP:
+            default:
+                return null;
+        }
     }
 
     private String localCameraPublisherBinding(boolean includeMicrophone) {
@@ -4978,21 +5110,6 @@ public final class MainActivity extends AppCompatActivity {
 
     private int readPublisherGopFrames() {
         return readIntInput(publisherGopInput, 50, 1, 600);
-    }
-
-    private StreamCorePublisher.Config buildPublisherLocalCapturePermissionConfig() {
-        return StreamCorePublisher.Config.newBuilder()
-                .sessionName("android_demo_permission_publisher_local_capture")
-                .publishUrl(readPublisherPublishUrl())
-                .inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                .inputBindingId(localCameraPublisherBinding(true))
-                .enableAudio(true)
-                .enableVideo(true)
-                .build();
-    }
-
-    private StreamCorePublisher.Config buildSelectedPublisherPermissionConfig() {
-        return buildSelectedPublisherConfig(report -> { });
     }
 
     private String defaultSelectedPublisherUrl() {
@@ -6227,27 +6344,36 @@ public final class MainActivity extends AppCompatActivity {
 
     private static final class PublisherLocalCaptureStartResult {
         final PublisherScenarioResult scenario;
-        final StreamCorePublisher.Session activeSession;
+        final StreamCorePublisher.Session activePublisherSession;
+        final StreamCoreCapture.Session activeCaptureSession;
 
         PublisherLocalCaptureStartResult(
                 PublisherScenarioResult scenario,
-                StreamCorePublisher.Session activeSession) {
+                StreamCorePublisher.Session activePublisherSession,
+                StreamCoreCapture.Session activeCaptureSession) {
             this.scenario = scenario;
-            this.activeSession = activeSession;
+            this.activePublisherSession = activePublisherSession;
+            this.activeCaptureSession = activeCaptureSession;
         }
     }
 
     private PublisherLocalCaptureStartResult startSelectedPublisherTransportScenario(
-            StreamCorePublisher.Config config,
+            String scenarioKey,
+            StreamCorePublisher.Config publisherConfig,
+            StreamCoreCapture.Config captureConfig,
             String publishUrl,
             boolean endpointReachable) {
-        final StreamCorePublisher.Session session = new StreamCorePublisher.Session();
-        final String[] callbackMessage = new String[] {"not_triggered_in_selected_publish"};
-        final StreamCoreOperationStatus configStatus = session.setConfig(config);
-        final StreamCorePublisher.Preflight preflight = session.preflight();
-        final StreamCoreOperationStatus startStatus;
+        final StreamCorePublisher.Session publisherSession =
+                new StreamCorePublisher.Session();
+        final StreamCoreCapture.Session captureSession = new StreamCoreCapture.Session();
+        final StreamCoreOperationStatus publisherConfigStatus =
+                publisherSession.setConfig(publisherConfig);
+        final StreamCorePublisher.Preflight publisherPreflight =
+                publisherSession.preflight();
+        StreamCoreOperationStatus effectiveStartStatus;
+        String captureSummary = "capture_not_started";
         if (!endpointReachable) {
-            startStatus = new StreamCoreOperationStatus(
+            effectiveStartStatus = new StreamCoreOperationStatus(
                     StreamCoreResultCode.NOT_ENABLED,
                     "publisher_endpoint_unreachable",
                     "Publish requires a reachable RTMP/RTSP endpoint.",
@@ -6258,37 +6384,75 @@ public final class MainActivity extends AppCompatActivity {
                             + ":1935/live/mobile_publish or rtsp://"
                             + DEFAULT_DEVELOPMENT_RTMP_HOST
                             + ":8554/live/mobile_publish");
-        } else if (!configStatus.isOk()) {
-            startStatus = configStatus;
+        } else if (captureConfig == null) {
+            effectiveStartStatus = new StreamCoreOperationStatus(
+                    StreamCoreResultCode.NOT_ENABLED,
+                    "publisher_capture_source_unsupported",
+                    "The selected source combination is not supported.",
+                    "Select camera with optional microphone, a media file, a still image, "
+                            + "or microphone-only capture.");
+        } else if (!publisherConfigStatus.isOk()) {
+            effectiveStartStatus = publisherConfigStatus;
         } else {
-            startStatus = session.start();
-            if (startStatus.isOk()) {
+            final StreamCoreOperationStatus publisherStartStatus =
+                    publisherSession.start();
+            effectiveStartStatus = publisherStartStatus;
+            if (publisherStartStatus.isOk()) {
+                final StreamCoreOperationStatus captureConfigStatus =
+                        captureSession.setConfig(captureConfig);
+                final StreamCoreOperationStatus connectStatus =
+                        captureConfigStatus.isOk()
+                                ? captureSession.connectPublisher(publisherSession)
+                                : captureConfigStatus;
+                final StreamCoreCapture.Preflight capturePreflight =
+                        captureSession.preflight();
+                final StreamCoreOperationStatus captureStartStatus =
+                        connectStatus.isOk() && capturePreflight.readyToStart
+                                ? captureSession.start()
+                                : (connectStatus.isOk()
+                                ? capturePreflight.status
+                                : connectStatus);
+                effectiveStartStatus = captureStartStatus;
+                captureSummary = "capture_preflight="
+                        + capturePreflight.status.statusName
+                        + "; capture_start="
+                        + captureStartStatus.statusName
+                        + "; capture_runtime="
+                        + captureSession.getRuntimeInfo().stateSummary;
+            }
+            if (effectiveStartStatus.isOk()) {
                 waitForPublisherLocalCaptureTransportDrain();
             }
         }
-        final StreamCorePublisher.RuntimeInfo runtimeAfterStart = session.getRuntimeInfo();
-        final boolean keepSession = startStatus.isOk();
+        final StreamCorePublisher.RuntimeInfo runtimeAfterStart =
+                publisherSession.getRuntimeInfo();
+        final boolean keepSession = effectiveStartStatus.isOk();
         final StreamCorePublisher.RuntimeInfo runtimeAfterStop;
-        final StreamCorePublisher.Session activeSession;
+        final StreamCorePublisher.Session activePublisherSession;
+        final StreamCoreCapture.Session activeCaptureSession;
         if (keepSession) {
             runtimeAfterStop = null;
-            activeSession = session;
+            activePublisherSession = publisherSession;
+            activeCaptureSession = captureSession;
         } else {
-            session.stop();
-            runtimeAfterStop = session.getRuntimeInfo();
-            activeSession = null;
+            captureSession.stop();
+            publisherSession.stop();
+            runtimeAfterStop = publisherSession.getRuntimeInfo();
+            activePublisherSession = null;
+            activeCaptureSession = null;
         }
         return new PublisherLocalCaptureStartResult(
                 new PublisherScenarioResult(
-                        "selected_publish_transport",
-                        preflight,
-                        startStatus,
+                        scenarioKey,
+                        publisherPreflight,
+                        effectiveStartStatus,
                         notApplicableStatus(),
                         notApplicableStatus(),
                         runtimeAfterStart,
                         runtimeAfterStop,
-                        callbackMessage[0]),
-                activeSession);
+                        captureSummary),
+                activePublisherSession,
+                activeCaptureSession);
     }
 
     private PublisherLocalCaptureStartResult startLocalCaptureNativeTransportScenario(
@@ -6302,14 +6466,35 @@ public final class MainActivity extends AppCompatActivity {
             int videoWidth,
             int videoHeight,
             int fps,
-            int gopFrames) {
-        final StreamCorePublisher.Session session = new StreamCorePublisher.Session();
-        final String[] callbackMessage = new String[] {"not_triggered_in_local_capture_native"};
-        session.setConfig(StreamCorePublisher.Config.newBuilder()
+            int gopFrames,
+            StreamCoreSurfaceTarget previewTarget) {
+        if (!cameraPermissionGranted || !audioPermissionGranted) {
+            return new PublisherLocalCaptureStartResult(
+                    buildLocalCaptureNativeSkippedScenario(
+                            "publisher_capture_permission_missing",
+                            "Publish requires camera and microphone permission.",
+                            "cameraPermission="
+                                    + cameraPermissionGranted
+                                    + ", recordAudioPermission="
+                                    + audioPermissionGranted,
+                            publishUrl,
+                            audioCodec,
+                            videoCodec,
+                            videoBitrateKbps,
+                            videoWidth,
+                            videoHeight,
+                            fps,
+                            gopFrames),
+                    null,
+                    null);
+        }
+
+        final StreamCorePublisher.Config publisherConfig =
+                StreamCorePublisher.Config.newBuilder()
                 .sessionName("android_demo_publish_local_native")
                 .publishUrl(publishUrl)
-                .inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                .inputBindingId(localCameraPublisherBinding(true))
+                .inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                .inputBindingId("capture:" + localCameraPublisherBinding(true))
                 .enableAudio(true)
                 .enableVideo(true)
                 .androidTransportPolicy(
@@ -6324,68 +6509,26 @@ public final class MainActivity extends AppCompatActivity {
                         .targetVideoBitrateKbps(videoBitrateKbps)
                         .targetVideoFormat(videoWidth, videoHeight, fps, gopFrames)
                         .build())
-                .transcodeRequirementCallback(
-                        report -> callbackMessage[0] = "required: " + report.summary)
-                .build());
-        final StreamCorePublisher.Preflight preflight = session.preflight();
-        final StreamCoreOperationStatus startStatus;
-        if (!endpointReachable) {
-            startStatus = new StreamCoreOperationStatus(
-                    StreamCoreResultCode.NOT_ENABLED,
-                    "publisher_native_endpoint_unreachable",
-                    "Publish requires a reachable RTMP/RTSP endpoint.",
-                    "current URL="
-                            + publishUrl
-                            + "; expected format such as rtmp://"
-                            + DEFAULT_DEVELOPMENT_RTMP_HOST
-                            + ":1935/live/local_native or rtsp://"
-                            + DEFAULT_DEVELOPMENT_RTMP_HOST
-                            + ":8554/live/local_native");
-        } else if (!cameraPermissionGranted || !audioPermissionGranted) {
-            startStatus = new StreamCoreOperationStatus(
-                    StreamCoreResultCode.NOT_ENABLED,
-                    "publisher_local_capture_permission_missing",
-                    "Publish requires camera and microphone permission.",
-                    "cameraPermission="
-                            + cameraPermissionGranted
-                            + ", recordAudioPermission="
-                            + audioPermissionGranted);
-        } else {
-            final StreamCoreOperationStatus nativeStartStatus = session.start();
-            startStatus = nativeStartStatus.isOk()
-                    ? new StreamCoreOperationStatus(
-                    nativeStartStatus.resultCode,
-                    "publisher_local_capture_start_succeeded",
-                    nativeStartStatus.summary,
-                    nativeStartStatus.detail)
-                    : nativeStartStatus;
-            if (startStatus.isOk()) {
-                waitForPublisherLocalCaptureTransportDrain();
-            }
+                .build();
+        final StreamCoreCapture.Config.Builder captureBuilder =
+                StreamCoreCapture.Config.newBuilder()
+                        .sessionName("android_demo_publish_capture_native")
+                        .sourceKind(StreamCoreCapture.SourceKind.CAMERA)
+                        .sourceId(selectedCameraSourceId())
+                        .audioSource(StreamCoreCapture.SourceKind.MICROPHONE, "")
+                        .preferredVideoSize(videoWidth, videoHeight)
+                        .targetFrameRate(fps)
+                        .enableAudio(true)
+                        .enableVideo(true);
+        if (previewTarget != null && previewTarget.hasSurface()) {
+            captureBuilder.previewTarget(previewTarget);
         }
-        final StreamCorePublisher.RuntimeInfo runtimeAfterStart = session.getRuntimeInfo();
-        final boolean keepSession = startStatus.isOk();
-        final StreamCorePublisher.RuntimeInfo runtimeAfterStop;
-        final StreamCorePublisher.Session activeSession;
-        if (keepSession) {
-            runtimeAfterStop = null;
-            activeSession = session;
-        } else {
-            session.stop();
-            runtimeAfterStop = session.getRuntimeInfo();
-            activeSession = null;
-        }
-        return new PublisherLocalCaptureStartResult(
-                new PublisherScenarioResult(
-                        "local_capture_native_transport",
-                        preflight,
-                        startStatus,
-                        notApplicableStatus(),
-                        notApplicableStatus(),
-                        runtimeAfterStart,
-                        runtimeAfterStop,
-                        callbackMessage[0]),
-                activeSession);
+        return startSelectedPublisherTransportScenario(
+                "local_capture_native_transport",
+                publisherConfig,
+                captureBuilder.build(),
+                publishUrl,
+                endpointReachable);
     }
 
     private PublisherScenarioResult buildLocalCaptureNativeSkippedScenario(
@@ -6424,8 +6567,8 @@ public final class MainActivity extends AppCompatActivity {
         session.setConfig(StreamCorePublisher.Config.newBuilder()
                 .sessionName("android_demo_publish_local_native")
                 .publishUrl(publishUrl)
-                .inputKind(StreamCorePublisher.InputKind.LOCAL_CAPTURE)
-                .inputBindingId(localCameraPublisherBinding(true))
+                .inputKind(StreamCorePublisher.InputKind.APP_RAW_FEED)
+                .inputBindingId("capture:" + localCameraPublisherBinding(true))
                 .enableAudio(true)
                 .enableVideo(true)
                 .androidTransportPolicy(
