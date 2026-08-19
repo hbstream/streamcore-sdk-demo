@@ -10,6 +10,70 @@ configurations.all {
     }
 }
 
+def demoSigningPropertyNames = [
+        'streamcoreDemoSigningStoreFile',
+        'streamcoreDemoSigningStorePassword',
+        'streamcoreDemoSigningKeyAlias',
+        'streamcoreDemoSigningKeyPassword'
+]
+def localSigningProperties = new Properties()
+def localSigningPropertiesFile = rootProject.file('signing.properties')
+if (localSigningPropertiesFile.isFile()) {
+    localSigningPropertiesFile.withInputStream { stream ->
+        localSigningProperties.load(stream)
+    }
+}
+def demoSigningValues = demoSigningPropertyNames.collectEntries { name ->
+    def value = providers.gradleProperty(name).orNull
+    if (value == null) {
+        value = localSigningProperties.getProperty(name)
+    }
+    [(name): value]
+}
+def hasDemoReleaseSigning = demoSigningPropertyNames.every { name ->
+    def value = demoSigningValues[name]
+    value != null && !value.isEmpty()
+}
+
+def demoSourceLicense = [
+        rootProject.file('../docs/public_repo/LICENSE'),
+        rootProject.file('../LICENSE')
+].find { it.isFile() }
+def androidDemoNotice = [
+        rootProject.file('../docs/package/THIRD-PARTY-NOTICES-android.md'),
+        rootProject.file('../docs/THIRD-PARTY-NOTICES-android.md')
+].find { it.isFile() }
+if (demoSourceLicense == null || androidDemoNotice == null) {
+    throw new GradleException('StreamCore Demo public license inputs are missing.')
+}
+
+def generatedLicenseRoot = layout.buildDirectory.dir('generated/streamcore-demo-licenses')
+def prepareStreamCoreDemoLicenses = tasks.register('prepareStreamCoreDemoLicenses', Sync) {
+    def sdkAar = file(gradle.ext.streamcoreSdkAarPath)
+    if (!sdkAar.isFile()) {
+        throw new GradleException("StreamCore SDK AAR is missing: ${sdkAar}")
+    }
+
+    into generatedLicenseRoot
+    from({ zipTree(sdkAar) }) {
+        include 'META-INF/HBRUN/licenses/**'
+        eachFile { details ->
+            details.path = details.path.substring('META-INF/HBRUN/'.length())
+        }
+        includeEmptyDirs = false
+    }
+    from(androidDemoNotice) {
+        into 'licenses'
+        rename { 'THIRD-PARTY-NOTICES-DEMO.md' }
+    }
+    from(demoSourceLicense) {
+        into 'licenses/streamcore-demo'
+    }
+    from(demoSourceLicense) {
+        into 'licenses/apache-2.0'
+    }
+}
+
 android {
     namespace 'com.hbr.streamcoredemo'
     compileSdk 34
@@ -28,9 +92,27 @@ android {
         versionName '1.6.2'
     }
 
+    signingConfigs {
+        if (hasDemoReleaseSigning) {
+            demoRelease {
+                storeFile file(demoSigningValues.streamcoreDemoSigningStoreFile)
+                storePassword demoSigningValues.streamcoreDemoSigningStorePassword
+                keyAlias demoSigningValues.streamcoreDemoSigningKeyAlias
+                keyPassword demoSigningValues.streamcoreDemoSigningKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // 公共 APK 必须使用 non-debuggable Release 变体。签名材料只允许通过本机
+            // Gradle property 或被忽略的本机 signing.properties 显式传入，禁止在
+            // 开放源码工程、Git 历史或生成包中保存密码/密钥。
+            debuggable false
             minifyEnabled false
+            if (hasDemoReleaseSigning) {
+                signingConfig signingConfigs.demoRelease
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
                     'proguard-rules.pro'
         }
@@ -39,6 +121,22 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            // AAR 内的 META-INF notice 不会自动进入最终 APK；构建前把同一正式
+            // SDK 的许可证闭包复制为只读 assets，保证独立 APK 也能履行告知义务。
+            assets.srcDir files(generatedLicenseRoot).builtBy(prepareStreamCoreDemoLicenses)
+        }
+    }
+}
+
+tasks.configureEach { task ->
+    // Android Gradle Plugin 的 assets 与 lint model 任务不会稳定继承 sourceSet
+    // 的 builtBy 关系；显式依赖保证 clean 构建和 lint 都读取同一许可证闭包。
+    if (task.name ==~ /merge(.*)Assets/ || task.name.toLowerCase().contains('lint')) {
+        task.dependsOn prepareStreamCoreDemoLicenses
     }
 }
 

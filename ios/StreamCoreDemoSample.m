@@ -1,6 +1,7 @@
 /*******************************************************************************
  * StreamCoreDemoSample.m
- * Copyright (c) 2026 HBRun. All rights reserved.
+ * Copyright (c) 2026 HBRun.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Small Objective-C public API sample for the StreamCore SDK demo.
  ******************************************************************************/

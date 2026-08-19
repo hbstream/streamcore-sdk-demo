@@ -10,7 +10,7 @@ Player 页通过来源下拉框显式选择媒体 URL 或 WHEP。WHEP 模式提�
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 .NET SDK 包，并按 NuGet 布局解压到：
+从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 .NET SDK 包，并按 NuGet 布局解压到：
 
 ```text
 packages/StreamCore.Sdk/

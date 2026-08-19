@@ -1,6 +1,7 @@
 /*******************************************************************************
  * StreamCoreDemoViewController.m
- * Copyright (c) 2026 HBRun. All rights reserved.
+ * Copyright (c) 2026 HBRun.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * iOS UIKit demo controller for StreamCore SDK playback, publishing, and GB28181 examples.
  ******************************************************************************/

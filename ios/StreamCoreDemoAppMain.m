@@ -1,6 +1,7 @@
 /*******************************************************************************
  * StreamCoreDemoAppMain.m
- * Copyright (c) 2026 HBRun. All rights reserved.
+ * Copyright (c) 2026 HBRun.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * iOS application entry point for the StreamCore SDK demo.
  ******************************************************************************/

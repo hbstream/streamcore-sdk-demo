@@ -14,7 +14,7 @@ Publisher 页面还提供异步 Capture Processor 示例：勾选处理前后对
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取目标平台 SDK 包，解压到当前目录下的 `sdk/<platform_arch>/`。例如：
+从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取目标平台 SDK 包，解压到当前目录下的 `sdk/<platform_arch>/`。例如：
 
 ```text
 sdk/

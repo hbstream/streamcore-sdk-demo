@@ -10,7 +10,7 @@ Player 页通过分段控件显式选择媒体 URL 或 WHEP。WHEP 模式提供�
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 iOS SDK，将 XCFramework 放入：
+从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 iOS SDK，将 XCFramework 放入：
 
 ```text
 Frameworks/StreamCoreSDK.xcframework

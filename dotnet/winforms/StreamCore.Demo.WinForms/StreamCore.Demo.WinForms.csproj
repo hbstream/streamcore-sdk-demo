@@ -33,7 +33,10 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-    <DebugType>pdbonly</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=streamcore-demo-source</PathMap>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
     <PlatformTarget>x64</PlatformTarget>

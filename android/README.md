@@ -10,7 +10,7 @@ Player 页通过“来源类型”显式选择媒体 URL 或 WHEP，不根据地
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 Android SDK 包，将 AAR 放入：
+从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 Android SDK 包，将 AAR 放入：
 
 ```text
 app/libs/streamcore-sdk.aar

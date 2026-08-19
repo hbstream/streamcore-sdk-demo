@@ -1,6 +1,7 @@
 /*******************************************************************************
  * StreamCoreDemoViewController.h
- * Copyright (c) 2026 HBRun. All rights reserved.
+ * Copyright (c) 2026 HBRun.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * iOS UIKit demo view controller declaration. This public demo only calls the
  * StreamCore SDK Objective-C API shipped with the SDK package and does not

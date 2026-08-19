@@ -1,6 +1,7 @@
 /*******************************************************************************
  * streamcore_demo_snapshot.h
- * Copyright (c) 2026 HBRun. All rights reserved.
+ * Copyright (c) 2026 HBRun.
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Snapshot helper declarations for StreamCore SDK demo tests.
  ******************************************************************************/
