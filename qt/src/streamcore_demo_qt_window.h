@@ -201,6 +201,17 @@ private:
     // 根据当前 Player URL 与 ONVIF 操作状态刷新桌面播放目标状态。
     void UpdatePlayerSourceSummary();
 
+    // 返回播放页是否由用户显式选择了 WHEP；普通 HTTP(S) URL 不做协议猜测。
+    bool IsPlayerWhepSelected() const;
+
+    // 把播放页 WHEP Bearer、本地绑定和隔离测试开关写入 SDK 的深拷贝配置。
+    streamcore_result_t ApplyPlayerWhepOptions(
+        streamcore_player_handle player,
+        QString* errorSummary) const;
+
+    // 返回可安全展示的播放输入；WHEP endpoint 不显示 query、fragment 或凭据。
+    QString PlayerDisplaySource() const;
+
     // 在当前 Player 渲染区域和独立全屏窗口之间切换，不改变播放会话本身。
     void TogglePlayerFullscreen();
 
@@ -413,6 +424,11 @@ private:
     QPlainTextEdit* publisher_runtime_log_;
     QPushButton* publisher_start_button_;
     QLineEdit* player_url_edit_;
+    QComboBox* player_source_kind_combo_;
+    QWidget* player_whep_options_panel_;
+    QLineEdit* player_whep_bearer_token_edit_;
+    QLineEdit* player_whep_local_bind_ip_edit_;
+    QCheckBox* player_whep_allow_insecure_http_check_;
     QComboBox* player_latency_preset_combo_;
     QComboBox* player_decode_mode_combo_;
     QComboBox* player_render_path_combo_;
@@ -550,6 +566,7 @@ private:
     QString latest_status_name_;
     QString latest_status_summary_;
     QString latest_log_zip_path_;
+    bool runtime_ready_;
     DemoLanguage language_;
     bool rebuilding_ui_;
     bool player_fullscreen_active_;

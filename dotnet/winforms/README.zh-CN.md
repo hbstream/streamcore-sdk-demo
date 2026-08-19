@@ -2,13 +2,15 @@
 
 English: [README.md](README.md)
 
-Publisher 页面支持 WHIP 端点和可选 Bearer Token。选择 WHIP 后，视频与音频编码固定为 H.264 与 Opus；SDK 配置或编码包参数不符合协议要求时，界面会原样展示 `-6 / UNSUPPORTED_MEDIA_CODEC`，以及实际编码和要求编码。
+本目录提供基于 .NET Framework 4.5.1 的 Windows WinForms 示例，覆盖播放、推流、GB28181 与授权状态。示例只使用正式 `StreamCore.Sdk` 公共包装层，不自行声明 P/Invoke。
 
-本目录提供 Windows WinForms 示例，使用公开的 `StreamCore.Sdk` .NET 封装，覆盖推流、拉流播放、GB28181 与授权状态。原生接口导入统一封装在 SDK 中，Demo 不自行声明 P/Invoke。
+## WHEP 播放（1.6.0）
+
+Player 页通过来源下拉框显式选择媒体 URL 或 WHEP。WHEP 模式提供遮蔽 Bearer Token、可选 numeric 本地绑定 IP 和隔离测试 HTTP 开关，默认仍使用 HTTPS，并要求 Professional `p2_whep_player`。`SetWhepOptions` 失败后不会继续 config、preflight 或 start；状态文本不会回显 token 或绑定地址。custom CA、ICE/TURN、relay-only 等高级参数继续使用公开 `StreamCorePlayerWhepOptions`。
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 .NET SDK 包，按 NuGet 常用目录结构解压到当前目录：
+从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 .NET SDK 包，并按 NuGet 布局解压到：
 
 ```text
 packages/StreamCore.Sdk/
@@ -16,21 +18,18 @@ packages/StreamCore.Sdk/
   runtimes/win-x64/native/streamcore_sdk.dll
 ```
 
-公开源码仓库不包含 SDK 包和正式授权文件。可运行的 Windows Demo 可从仓库的 [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest) 下载。
-
 ## 编译
 
 ```powershell
 MSBuild.exe .\StreamCore.Demo.WinForms\StreamCore.Demo.WinForms.csproj /t:Clean,Build /p:Configuration=Release
 ```
 
-当前示例面向 .NET Framework 4.5.1 和 Windows x64。
-
 ## Demo 授权
 
-Demo 授权仅绑定本示例可执行程序，用于体验 Standard 与 Professional 能力，并显示 `hbrun.com` 水印。授权不能复制到其他应用中使用。
+可运行包会在程序目录下放置
+`license/demo/streamcore_demo_winforms.lic`。它是 `SC-LIC-ENC-v1` 加密 Demo 授权，
+示例通过 `StreamCoreRuntime.Configure` 提交文件路径；License 页也可用
+`StreamCoreRuntime.RegisterLicenseText` 验证显式填写的加密授权字符串。
 
-## 依赖
-
-- .NET Framework、Windows 系统库和已发布的 `StreamCore.Sdk` 包。
-- Demo 只调用公开 .NET 封装，不自行声明 P/Invoke。
+Demo 授权仅绑定本示例进程，用于评估 Standard 与 Professional 能力并显示
+`hbrun.com` 水印，不能复制到其他应用，也不能交给正式 SDK 使用。

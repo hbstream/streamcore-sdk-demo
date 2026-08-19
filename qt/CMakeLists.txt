@@ -26,22 +26,24 @@ if (MSVC)
     add_compile_options(/utf-8)
 endif()
 
+set(streamcore_demo_cli_default ON)
+if (APPLE)
+    # macOS 正式校验绑定 Bundle ID 与 Team ID；无 bundle 身份的 CLI 不能用
+    # GUI Demo 授权伪装通过，因此 Apple 默认不构建该辅助程序。
+    set(streamcore_demo_cli_default OFF)
+endif()
 option(STREAMCORE_DEMO_BUILD_CLI
-    "Build the desktop command-line snapshot helper" ON)
+    "Build the desktop command-line snapshot helper" ${streamcore_demo_cli_default})
 option(STREAMCORE_DEMO_BUILD_QT_GUI
     "Build the Qt 6 Widgets GUI demo" ON)
 option(STREAMCORE_DEMO_ENABLE_GB28181
-    "Enable GB28181 demo code when the SDK addon target/header is available" OFF)
+    "Enable GB28181 demo code when the packaged SDK exposes the public runtime" OFF)
 option(STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_PACKAGE_ROOT
     "Allow STREAMCORE_DEMO_SDK_PACKAGE_ROOT to point outside this demo tree for local development only" OFF)
 set(STREAMCORE_DEMO_SDK_PACKAGE_ROOT ""
     CACHE PATH "Extracted StreamCore SDK package root, such as sdk/windows_x86_64")
 set(STREAMCORE_DEMO_RUNTIME_DEPENDENCY_DIRS ""
     CACHE STRING "Additional runtime DLL/SO directories copied beside the demo executable")
-set(STREAMCORE_DEMO_CLI_APP_ID "streamcore_demo_cli"
-    CACHE STRING "Desktop CLI demo application identity used for demo license binding")
-set(STREAMCORE_DEMO_QT_APP_ID "streamcore_demo_qt"
-    CACHE STRING "Qt GUI demo application identity used for demo license binding")
 set(STREAMCORE_DEMO_APPLE_CODE_SIGN_IDENTITY "$ENV{STREAMCORE_DEMO_APPLE_CODE_SIGN_IDENTITY}"
     CACHE STRING "macOS code-signing identity for stable TCC permission identity; use '-' for ad-hoc")
 set(STREAMCORE_DEMO_APPLE_CODE_SIGN_KEYCHAIN "$ENV{STREAMCORE_DEMO_APPLE_CODE_SIGN_KEYCHAIN}"
@@ -52,13 +54,6 @@ set(STREAMCORE_DEMO_APPLE_CODE_SIGN_EXTRA_ARGS ""
 if (APPLE AND STREAMCORE_DEMO_APPLE_CODE_SIGN_IDENTITY STREQUAL "")
     set(STREAMCORE_DEMO_APPLE_CODE_SIGN_IDENTITY "-"
         CACHE STRING "macOS code-signing identity for stable TCC permission identity; use '-' for ad-hoc" FORCE)
-endif()
-
-if (STREAMCORE_DEMO_ENABLE_GB28181)
-    set(STREAMCORE_SDK_BUILD_GB28181_ADDON ON CACHE BOOL
-        "Build GB28181 addon target for streamcore_demo_qt" FORCE)
-    set(STREAMCORE_SDK_ENABLE_GB28181 ON CACHE BOOL
-        "Expose GB28181 capability in streamcore_demo_qt" FORCE)
 endif()
 
 if (STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_PACKAGE_ROOT
@@ -145,6 +140,11 @@ elseif (APPLE)
         set_target_properties(hbr_streamcore_sdk
             PROPERTIES
                 IMPORTED_LOCATION "${STREAMCORE_DEMO_SDK_APPLE_FRAMEWORK_DIR}/StreamCoreSDK")
+        # Qt 的 macOS 启动桥需要正式 Apple wrapper 采集 Bundle ID；imported
+        # framework 的二进制路径不会自动传播 Headers，因此显式加入该公开头目录。
+        set_property(TARGET hbr_streamcore_sdk APPEND PROPERTY
+            INTERFACE_INCLUDE_DIRECTORIES
+                "${STREAMCORE_DEMO_SDK_APPLE_FRAMEWORK_DIR}/Headers")
     else()
         file(GLOB streamcore_demo_sdk_libraries
             "${STREAMCORE_DEMO_SDK_PACKAGE_ROOT}/lib/libstreamcore_sdk.dylib*"
@@ -222,8 +222,10 @@ elseif (UNIX)
 endif()
 
 if (NOT STREAMCORE_DEMO_SDK_HAS_GB28181_ADDON
-        AND NOT WIN32
         AND EXISTS "${STREAMCORE_DEMO_SDK_PACKAGE_ROOT}/include/streamcore/streamcore_sdk_gb28181.h")
+    # StreamCore 1.6.2 起，正式包默认把 GB28181 C ABI 编入主 SDK runtime。
+    # 保留独立 addon 探测是为了兼容旧包；新包直接复用主 target，不能因为没有
+    # streamcore_gb28181.dll/.so 就把已交付的公开能力误判为不可用。
     add_library(hbr_streamcore_gb28181 INTERFACE IMPORTED GLOBAL)
     set_target_properties(hbr_streamcore_gb28181
         PROPERTIES
@@ -236,9 +238,24 @@ set(streamcore_demo_asset_root "${CMAKE_CURRENT_LIST_DIR}/assets")
 
 set(streamcore_demo_license_root "${CMAKE_CURRENT_LIST_DIR}/license/demo")
 
-if (NOT EXISTS "${streamcore_demo_license_root}/streamcore_demo_qt.lic"
-        OR NOT EXISTS "${streamcore_demo_license_root}/streamcore_demo_cli.lic"
-        OR NOT EXISTS "${streamcore_demo_license_root}/streamcore_demo_public.pem")
+if (WIN32)
+    set(streamcore_demo_qt_license_file "streamcore_demo_qt.lic")
+    set(streamcore_demo_cli_license_file "streamcore_demo_cli.lic")
+elseif (APPLE)
+    set(streamcore_demo_qt_license_file "streamcore_demo_qt_macos.lic")
+    if (STREAMCORE_DEMO_BUILD_CLI)
+        message(FATAL_ERROR
+            "The macOS Demo license is package-bound. "
+            "STREAMCORE_DEMO_BUILD_CLI must remain OFF on Apple platforms.")
+    endif()
+else()
+    set(streamcore_demo_qt_license_file "streamcore_demo_qt_linux.lic")
+    set(streamcore_demo_cli_license_file "streamcore_demo_cli_linux.lic")
+endif()
+
+if (NOT EXISTS "${streamcore_demo_license_root}/${streamcore_demo_qt_license_file}"
+        OR (STREAMCORE_DEMO_BUILD_CLI
+            AND NOT EXISTS "${streamcore_demo_license_root}/${streamcore_demo_cli_license_file}"))
     message(FATAL_ERROR
         "Demo license resources are missing. Place them under "
         "streamcore_demo_qt/license/demo/.")
@@ -261,7 +278,13 @@ int main()
     device.profile_token[0] = 0;
     device.stream_uri[0] = 0;
     device.resolved_stream_uri = 0;
-    return 0;
+    return config.username == nullptr &&
+        config.password == nullptr &&
+        config.resolve_stream_uri == 0 &&
+        device.profile_name[0] == 0 &&
+        device.profile_token[0] == 0 &&
+        device.stream_uri[0] == 0 &&
+        device.resolved_stream_uri == 0 ? 0 : 1;
 }
 ]=] STREAMCORE_DEMO_HAS_ONVIF_STREAM_URI_FIELDS)
 set(CMAKE_REQUIRED_INCLUDES "${streamcore_demo_previous_required_includes}")
@@ -274,6 +297,7 @@ endif()
 set(streamcore_demo_snapshot_sources
     src/streamcore_demo_snapshot.c)
 
+# Linux Demo 的构建产物会直接进入绿色包，因此必须从生成时就只使用包内相对 RPATH。
 function(streamcore_demo_configure_linux_runpath target)
     if (UNIX AND NOT APPLE)
         target_link_options(${target}
@@ -282,7 +306,9 @@ function(streamcore_demo_configure_linux_runpath target)
         set_target_properties(${target}
             PROPERTIES
                 BUILD_RPATH "$ORIGIN;$ORIGIN/lib"
-                INSTALL_RPATH "$ORIGIN;$ORIGIN/lib")
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH "$ORIGIN;$ORIGIN/lib"
+                INSTALL_RPATH_USE_LINK_PATH FALSE)
     endif()
 endfunction()
 
@@ -401,10 +427,7 @@ function(streamcore_demo_deploy_license_resources target licenseFile)
             "$<TARGET_FILE_DIR:${target}>/license/demo"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${streamcore_demo_license_root}/${licenseFile}"
-            "$<TARGET_FILE_DIR:${target}>/license/demo/${licenseFile}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${streamcore_demo_license_root}/streamcore_demo_public.pem"
-            "$<TARGET_FILE_DIR:${target}>/license/demo/streamcore_demo_public.pem")
+            "$<TARGET_FILE_DIR:${target}>/license/demo/${licenseFile}")
 endfunction()
 
 function(streamcore_demo_codesign_apple_bundle target)
@@ -444,7 +467,7 @@ function(streamcore_demo_codesign_apple_bundle target)
     endif()
 endfunction()
 
-function(streamcore_demo_configure_sdk_consumer target licenseFile appId)
+function(streamcore_demo_configure_sdk_consumer target licenseFile)
     target_include_directories(${target}
         PRIVATE
             "${CMAKE_CURRENT_LIST_DIR}/src")
@@ -467,9 +490,7 @@ function(streamcore_demo_configure_sdk_consumer target licenseFile appId)
     endif()
     target_compile_definitions(${target}
         PRIVATE
-            STREAMCORE_DEMO_LICENSE_PATH="license/demo/${licenseFile}"
-            STREAMCORE_DEMO_PUBLIC_KEY_PATH="license/demo/streamcore_demo_public.pem"
-            STREAMCORE_DEMO_APP_ID="${appId}")
+            STREAMCORE_DEMO_LICENSE_PATH="license/demo/${licenseFile}")
     if (STREAMCORE_DEMO_HAS_ONVIF_STREAM_URI_FIELDS)
         target_compile_definitions(${target}
             PRIVATE
@@ -501,8 +522,7 @@ if (STREAMCORE_DEMO_BUILD_CLI)
         ${streamcore_demo_snapshot_sources})
     streamcore_demo_configure_sdk_consumer(
         streamcore_demo_cli
-        "streamcore_demo_cli.lic"
-        "${STREAMCORE_DEMO_CLI_APP_ID}")
+        "${streamcore_demo_cli_license_file}")
 endif()
 
 if (STREAMCORE_DEMO_BUILD_QT_GUI)
@@ -540,6 +560,9 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
             PRIVATE
                 STREAMCORE_DEMO_ICON_PATH="${streamcore_demo_icon_path_rc}")
     elseif (APPLE)
+        # macOS 绿色包直接使用最终 bundle 的相对 RPATH，避免 CMake 为 imported
+        # framework 自动写入构建机 SDK staging 绝对路径；该约束必须在链接期生效，
+        # 不能依赖打包后修改 Mach-O 来掩盖不可迁移的构建来源。
         set_target_properties(streamcore_demo_qt
             PROPERTIES
                 MACOSX_BUNDLE ON
@@ -547,8 +570,10 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
                     "${CMAKE_CURRENT_LIST_DIR}/StreamCoreDemoQtInfo.plist.in"
                 MACOSX_BUNDLE_BUNDLE_NAME "StreamCore Demo Qt"
                 MACOSX_BUNDLE_GUI_IDENTIFIER "com.hbr.streamcoredemo.qt"
-                MACOSX_BUNDLE_SHORT_VERSION_STRING "1.5.1"
-                MACOSX_BUNDLE_BUNDLE_VERSION "1.5.1"
+                MACOSX_BUNDLE_SHORT_VERSION_STRING "1.6.2"
+                MACOSX_BUNDLE_BUNDLE_VERSION "1.6.2"
+                BUILD_WITH_INSTALL_RPATH TRUE
+                INSTALL_RPATH "@executable_path/../Frameworks"
                 XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
                 XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
                 XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "")
@@ -581,8 +606,7 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
     endif()
     streamcore_demo_configure_sdk_consumer(
         streamcore_demo_qt
-        "streamcore_demo_qt.lic"
-        "${STREAMCORE_DEMO_QT_APP_ID}")
+        "${streamcore_demo_qt_license_file}")
 
     if (WIN32)
         find_program(STREAMCORE_DEMO_WINDEPLOYQT_EXECUTABLE

@@ -94,6 +94,10 @@ namespace StreamCore.Demo.WinForms
         private readonly Button publisherRunButton = CreateButton(string.Empty, null);
 
         private readonly TextBox playerUrlTextBox = CreateSingleLineEditor();
+        private readonly ComboBox playerSourceKindComboBox = CreateComboBox();
+        private readonly TextBox playerWhepBearerTokenTextBox = CreateSingleLineEditor();
+        private readonly TextBox playerWhepLocalBindIpTextBox = CreateSingleLineEditor();
+        private readonly CheckBox playerWhepAllowInsecureHttpCheckBox = CreateCheckBox();
         private readonly ComboBox playerDecodeModeComboBox = CreateComboBox();
         private readonly ComboBox playerRenderPathComboBox = CreateComboBox();
         private readonly NumericUpDown playerBufferMsBox = CreateIntegerBox(0, 10000, 300);
@@ -167,6 +171,9 @@ namespace StreamCore.Demo.WinForms
         private Control playerOnvifSearchRow;
         private Control playerOnvifListRow;
         private Control playerOnvifCredentialRow;
+        private Control playerWhepBearerRow;
+        private Control playerWhepLocalBindRow;
+        private Control playerWhepAllowHttpRow;
         private Control gbVideoDeviceRow;
         private Control gbAudioDeviceRow;
         private bool onvifSearchInProgress;
@@ -505,15 +512,28 @@ namespace StreamCore.Demo.WinForms
                     playerOnvifUsernameTextBox,
                     T("Password", "密码"),
                     playerOnvifPasswordTextBox));
+            playerWhepBearerRow = CreateFieldRow(
+                T("Bearer token", "Bearer Token"),
+                playerWhepBearerTokenTextBox);
+            playerWhepLocalBindRow = CreateFieldRow(
+                T("Local bind", "本地绑定"),
+                playerWhepLocalBindIpTextBox);
+            playerWhepAllowHttpRow = CreateFieldRow(
+                T("Test policy", "测试策略"),
+                playerWhepAllowInsecureHttpCheckBox);
             AddSidebarSection(
                 left,
                 CreateSectionCard(
                     T("Player setup", "播放设置"),
+                    CreateFieldRow(T("Source", "来源"), playerSourceKindComboBox),
                     CreateFieldRow(T("ONVIF", "ONVIF"), playerOnvifEnabledCheckBox),
                     playerOnvifSearchRow,
                     playerOnvifListRow,
                     playerOnvifCredentialRow,
-                    CreateFieldRow(T("Player URL", "播放地址"), playerUrlTextBox),
+                    CreateFieldRow(T("URL / endpoint", "URL / endpoint"), playerUrlTextBox),
+                    playerWhepBearerRow,
+                    playerWhepLocalBindRow,
+                    playerWhepAllowHttpRow,
                     CreateFieldRow(
                         T("Decode", "解码"),
                         CreateInlineLabeledEditor(
@@ -785,6 +805,7 @@ namespace StreamCore.Demo.WinForms
 
             playerDecodeModeComboBox.SelectedIndexChanged += (sender, args) => UpdatePlayerOverlay();
             playerRenderPathComboBox.SelectedIndexChanged += (sender, args) => UpdatePlayerOverlay();
+            playerSourceKindComboBox.SelectedIndexChanged += (sender, args) => UpdatePlayerWhepUi();
             playerRunButton.Click += (sender, args) => TogglePlayer();
             playerOnvifEnabledCheckBox.CheckedChanged += (sender, args) => UpdatePlayerOnvifUi();
             playerOnvifSearchButton.Click += (sender, args) => SearchOnvifDevices();
@@ -924,12 +945,18 @@ namespace StreamCore.Demo.WinForms
             AddComboValue(playerRenderPathComboBox, "GPU frame", StreamCorePlayerVideoPresentPath.GpuFrame);
             AddComboValue(playerRenderPathComboBox, "Direct surface", StreamCorePlayerVideoPresentPath.DirectSurface);
             AddComboValue(playerRenderPathComboBox, "SDK auto", StreamCorePlayerVideoPresentPath.Auto);
+            AddComboValue(playerSourceKindComboBox, T("Media URL", "媒体 URL"), StreamCorePlayerSourceKind.Url);
+            AddComboValue(playerSourceKindComboBox, "WHEP", StreamCorePlayerSourceKind.Whep);
             playerOnvifEnabledCheckBox.Text = T("Enable", "启用");
             playerOnvifSearchButton.Text = T("Search ONVIF", "搜索 ONVIF");
             playerOnvifHintLabel.Text = T(
                 "Double-click a discovered device below to resolve and use its stream.",
                 "双击下方设备即可解析并使用流地址。");
             playerOnvifPasswordTextBox.UseSystemPasswordChar = true;
+            playerWhepBearerTokenTextBox.UseSystemPasswordChar = true;
+            playerWhepAllowInsecureHttpCheckBox.Text = T(
+                "Allow HTTP for isolated tests",
+                "仅隔离测试允许 HTTP");
 
             AddComboValue(gbTransportComboBox, "TCP", StreamCoreGb28181TransportMode.Tcp);
             AddComboValue(gbTransportComboBox, "UDP", StreamCoreGb28181TransportMode.Udp);
@@ -955,6 +982,7 @@ namespace StreamCore.Demo.WinForms
 
             playerDecodeModeComboBox.SelectedIndex = 0;
             playerRenderPathComboBox.SelectedIndex = 0;
+            playerSourceKindComboBox.SelectedIndex = 0;
             playerNoCacheCheckBox.Text = T("Disable audio/video cache", "禁用音视频缓存");
             playerNoCacheCheckBox.Checked = false;
             playerRealtimeProfileCheckBox.Text = T("Enable realtime queue profile", "启用实时队列配置");
@@ -1008,6 +1036,7 @@ namespace StreamCore.Demo.WinForms
 
             RefreshPublisherResolutionOptions();
             RefreshGbResolutionOptions();
+            UpdatePlayerWhepUi();
             UpdatePlayerOnvifUi();
             UpdatePlayerOverlay();
             UpdatePublisherUi();
@@ -1853,14 +1882,26 @@ namespace StreamCore.Demo.WinForms
                 using (StreamCorePlayerSession session = new StreamCorePlayerSession())
                 {
                     StreamCorePlayerConfig config = BuildPlayerConfig();
+                    StreamCoreResult setWhep = ApplyPlayerWhepOptions(session);
+                    if (setWhep != StreamCoreResult.Ok)
+                    {
+                        LogPlayer("set_whep=" + setWhep + " configuration rejected");
+                        return;
+                    }
                     StreamCoreResult setConfig = session.SetConfig(config);
+                    if (setConfig != StreamCoreResult.Ok)
+                    {
+                        LogPlayer("set_config=" + setConfig + " configuration rejected");
+                        return;
+                    }
                     StreamCoreResult setRender = session.SetWindowsRenderTarget(
                         playerRenderPanel.Handle,
                         playerRenderPanel.Width,
                         playerRenderPanel.Height);
                     StreamCorePlayerPreflightResult preflight = session.Preflight();
                     LogPlayer(
-                        "set_config=" + setConfig
+                        "set_whep=" + setWhep
+                        + " set_config=" + setConfig
                         + " render_target=" + setRender
                         + " preflight=" + preflight.Call.Result + "/" + SafePreflight(preflight.Preflight)
                         + " " + preflight.Call.ErrorText);
@@ -1879,7 +1920,20 @@ namespace StreamCore.Demo.WinForms
                 StopPlayer();
                 playerSession = new StreamCorePlayerSession();
                 StreamCorePlayerConfig config = BuildPlayerConfig();
+                StreamCoreResult setWhep = ApplyPlayerWhepOptions(playerSession);
+                if (setWhep != StreamCoreResult.Ok)
+                {
+                    LogPlayer("set_whep=" + setWhep + " configuration rejected");
+                    StopPlayer();
+                    return;
+                }
                 StreamCoreResult setConfig = playerSession.SetConfig(config);
+                if (setConfig != StreamCoreResult.Ok)
+                {
+                    LogPlayer("set_config=" + setConfig + " configuration rejected");
+                    StopPlayer();
+                    return;
+                }
                 StreamCoreResult setRender = playerSession.SetWindowsRenderTarget(
                     playerRenderPanel.Handle,
                     playerRenderPanel.Width,
@@ -1889,7 +1943,8 @@ namespace StreamCore.Demo.WinForms
                 StreamCoreCallResult start = playerSession.Start();
 
                 LogPlayer(
-                    "set_config=" + setConfig
+                    "set_whep=" + setWhep
+                    + " set_config=" + setConfig
                     + " render_target=" + setRender
                     + " audio_volume=" + setVolume
                     + " preflight=" + preflight.Call.Result + "/" + SafePreflight(preflight.Preflight)
@@ -1924,7 +1979,12 @@ namespace StreamCore.Demo.WinForms
 
         private StreamCorePlayerConfig BuildPlayerConfig()
         {
-            StreamCorePlayerConfig config = StreamCorePlayerConfig.Url(playerUrlTextBox.Text.Trim());
+            StreamCorePlayerSourceKind sourceKind = SelectedValue(
+                playerSourceKindComboBox,
+                StreamCorePlayerSourceKind.Url);
+            StreamCorePlayerConfig config = sourceKind == StreamCorePlayerSourceKind.Whep
+                ? StreamCorePlayerConfig.Whep(playerUrlTextBox.Text.Trim())
+                : StreamCorePlayerConfig.Url(playerUrlTextBox.Text.Trim());
             int bufferMs = (int)playerBufferMsBox.Value;
             config.SessionName = "dotnet-winforms-player";
             config.RenderTargetId = "winforms-player-panel";
@@ -1945,6 +2005,29 @@ namespace StreamCore.Demo.WinForms
             config.RealtimeVideoMaxQueueSize = (int)playerVideoQueueBox.Value;
             config.AudioVolumePercent = playerAudioVolumeTrackBar.Value;
             return config;
+        }
+
+        /// <summary>
+        /// Applies the compact WHEP demo controls through the public wrapper before config/preflight.
+        /// The wrapper deep-copies values and returns only fixed diagnostics, so the Demo never logs
+        /// the Bearer token or numeric bind address.
+        /// </summary>
+        private StreamCoreResult ApplyPlayerWhepOptions(StreamCorePlayerSession session)
+        {
+            if (SelectedValue(
+                    playerSourceKindComboBox,
+                    StreamCorePlayerSourceKind.Url) != StreamCorePlayerSourceKind.Whep)
+            {
+                return StreamCoreResult.Ok;
+            }
+
+            StreamCorePlayerWhepOptions options = new StreamCorePlayerWhepOptions
+            {
+                BearerToken = playerWhepBearerTokenTextBox.Text,
+                LocalBindIp = playerWhepLocalBindIpTextBox.Text.Trim(),
+                AllowInsecureHttp = playerWhepAllowInsecureHttpCheckBox.Checked
+            };
+            return session.SetWhepOptions(options);
         }
 
         private void StopPlayer()
@@ -2524,6 +2607,16 @@ namespace StreamCore.Demo.WinForms
             playerRunButton.Text = running ?
                 T("Stop playback", "停止播放") :
                 T("Start playback", "启动播放");
+            // WHEP 选项属于创建期合同；运行期间锁定来源和输入，Stop/Dispose 后再允许修改。
+            playerSourceKindComboBox.Enabled = !running;
+            playerUrlTextBox.Enabled = !running;
+            playerWhepBearerTokenTextBox.Enabled = !running;
+            playerWhepLocalBindIpTextBox.Enabled = !running;
+            playerWhepAllowInsecureHttpCheckBox.Enabled = !running;
+            playerOnvifEnabledCheckBox.Enabled = !running
+                && SelectedValue(
+                    playerSourceKindComboBox,
+                    StreamCorePlayerSourceKind.Url) != StreamCorePlayerSourceKind.Whep;
             ShowPreviewOverlay(
                 playerOverlayLabel,
                 T("PLAYER RENDER TARGET\r\nSTART PLAYBACK", "播放渲染目标\r\n请启动播放"),
@@ -2532,7 +2625,10 @@ namespace StreamCore.Demo.WinForms
 
         private void UpdatePlayerOnvifUi()
         {
-            bool enabled = playerOnvifEnabledCheckBox.Checked;
+            bool enabled = playerOnvifEnabledCheckBox.Checked
+                && SelectedValue(
+                    playerSourceKindComboBox,
+                    StreamCorePlayerSourceKind.Url) != StreamCorePlayerSourceKind.Whep;
             if (playerOnvifSearchRow != null)
             {
                 playerOnvifSearchRow.Visible = enabled;
@@ -2557,6 +2653,36 @@ namespace StreamCore.Demo.WinForms
                     "Enable ONVIF to discover devices and resolve RTSP stream URIs.",
                     "启用 ONVIF 后即可搜索设备并解析 RTSP 流地址。");
             }
+        }
+
+        /// <summary>
+        /// Keeps protocol-specific controls explicit: selecting WHEP exposes only safe
+        /// creation options and disables ONVIF without guessing from the endpoint text.
+        /// </summary>
+        private void UpdatePlayerWhepUi()
+        {
+            bool whep = SelectedValue(
+                playerSourceKindComboBox,
+                StreamCorePlayerSourceKind.Url) == StreamCorePlayerSourceKind.Whep;
+            if (playerWhepBearerRow != null)
+            {
+                playerWhepBearerRow.Visible = whep;
+            }
+            if (playerWhepLocalBindRow != null)
+            {
+                playerWhepLocalBindRow.Visible = whep;
+            }
+            if (playerWhepAllowHttpRow != null)
+            {
+                playerWhepAllowHttpRow.Visible = whep;
+            }
+            playerOnvifEnabledCheckBox.Enabled = !whep && playerSession == null;
+            if (whep)
+            {
+                playerOnvifEnabledCheckBox.Checked = false;
+            }
+            UpdatePlayerOnvifUi();
+            UpdatePlayerOverlay();
         }
 
         private void SearchOnvifDevices()
@@ -2875,17 +3001,14 @@ namespace StreamCore.Demo.WinForms
         {
             string licenseDirectory = ResolveDemoLicenseDirectory();
             string licensePath = Path.Combine(licenseDirectory, "streamcore_demo_winforms.lic");
-            string publicKeyPath = Path.Combine(licenseDirectory, "streamcore_demo_public.pem");
-            if (!File.Exists(licensePath) || !File.Exists(publicKeyPath))
+            if (!File.Exists(licensePath))
             {
                 return;
             }
 
             StreamCoreRuntimeConfig config = new StreamCoreRuntimeConfig
             {
-                ExpectedProduct = "streamcore_demo",
-                LicensePath = licensePath,
-                PublicKeyPemPath = publicKeyPath
+                LicensePath = licensePath
             };
             StreamCoreCallResult call = StreamCoreRuntime.Configure(config);
             RefreshLicensePanel("demo_license=" + call.Result + " " + call.ErrorText);

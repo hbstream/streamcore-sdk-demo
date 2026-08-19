@@ -377,6 +377,7 @@ QString OnvifEndpointLabel(const streamcore_onvif_device_t& device)
     return port > 0 ? QString::fromUtf8("%1:%2").arg(host).arg(port) : host;
 }
 
+#if STREAMCORE_DEMO_HAS_ONVIF_STREAM_URI
 // Add ONVIF credentials to RTSP URLs when the device omits userinfo.
 QString ApplyRtspCredentials(
     const QString& streamUri,
@@ -400,6 +401,7 @@ QString ApplyRtspCredentials(
     url.setPassword(password);
     return url.toString(QUrl::FullyEncoded);
 }
+#endif
 
 struct ZipSourceEntry
 {
@@ -900,6 +902,11 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       publisher_runtime_log_(nullptr),
       publisher_start_button_(nullptr),
       player_url_edit_(nullptr),
+      player_source_kind_combo_(nullptr),
+      player_whep_options_panel_(nullptr),
+      player_whep_bearer_token_edit_(nullptr),
+      player_whep_local_bind_ip_edit_(nullptr),
+      player_whep_allow_insecure_http_check_(nullptr),
       player_latency_preset_combo_(nullptr),
       player_decode_mode_combo_(nullptr),
       player_render_path_combo_(nullptr),
@@ -998,6 +1005,7 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       latest_status_name_(QString::fromUtf8("pending")),
       latest_status_summary_(QString::fromUtf8("Runtime is loading.")),
       latest_log_zip_path_(),
+      runtime_ready_(false),
       language_(StartupLanguage()),
       rebuilding_ui_(false),
       player_fullscreen_active_(false)
@@ -1711,14 +1719,6 @@ void StreamCoreDemoQtWindow::BuildUi()
     QGroupBox* publisher_runtime_box =
         new QGroupBox(UiText("Runtime summary", "运行摘要"), publisher_page);
     QVBoxLayout* publisher_runtime_layout = new QVBoxLayout(publisher_runtime_box);
-    QHBoxLayout* publisher_source_row = new QHBoxLayout();
-    QHBoxLayout* publisher_audio_row = new QHBoxLayout();
-    QHBoxLayout* publisher_url_row = new QHBoxLayout();
-    QHBoxLayout* publisher_codec_row = new QHBoxLayout();
-    QHBoxLayout* publisher_output_row = new QHBoxLayout();
-    QHBoxLayout* publisher_rate_row = new QHBoxLayout();
-    QHBoxLayout* publisher_file_mode_row = new QHBoxLayout();
-    QHBoxLayout* publisher_action_row = new QHBoxLayout();
     QWidget* player_page = new QWidget(feature_tabs);
     QVBoxLayout* player_layout = new QVBoxLayout(player_page);
     QHBoxLayout* player_content_layout = new QHBoxLayout();
@@ -1740,7 +1740,6 @@ void StreamCoreDemoQtWindow::BuildUi()
     QGroupBox* player_runtime_box = new QGroupBox(
         UiText("Runtime information", "运行信息"), player_page);
     QVBoxLayout* player_runtime_layout = new QVBoxLayout(player_runtime_box);
-    QHBoxLayout* player_action_row = new QHBoxLayout();
     QWidget* gb28181_page = new QWidget(feature_tabs);
     QVBoxLayout* gb28181_layout = new QVBoxLayout(gb28181_page);
     QHBoxLayout* gb28181_content_layout = new QHBoxLayout();
@@ -1752,14 +1751,9 @@ void StreamCoreDemoQtWindow::BuildUi()
     QGroupBox* gb28181_source_box =
         new QGroupBox(UiText("Source setup", "来源设置"), gb28181_page);
     QVBoxLayout* gb28181_source_layout = new QVBoxLayout(gb28181_source_box);
-    QWidget* gb28181_action_box = new QWidget(gb28181_page);
-    QVBoxLayout* gb28181_action_layout = new QVBoxLayout(gb28181_action_box);
     QGroupBox* gb28181_runtime_box =
         new QGroupBox(UiText("Runtime summary", "运行摘要"), gb28181_page);
     QVBoxLayout* gb28181_runtime_layout = new QVBoxLayout(gb28181_runtime_box);
-    QHBoxLayout* gb28181_platform_row = new QHBoxLayout();
-    QHBoxLayout* gb28181_source_row = new QHBoxLayout();
-    QHBoxLayout* gb28181_action_row = new QHBoxLayout();
     QWidget* license_page = new QWidget(feature_tabs);
     QVBoxLayout* license_layout = new QVBoxLayout(license_page);
     QWidget* logs_page = new QWidget(feature_tabs);
@@ -1834,8 +1828,6 @@ void StreamCoreDemoQtWindow::BuildUi()
     player_runtime_box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     gb28181_platform_box->setMaximumWidth(kDesktopConfigPaneWidth);
     gb28181_source_box->setMaximumWidth(kDesktopConfigPaneWidth);
-    gb28181_action_box->setMaximumWidth(kDesktopConfigPaneWidth);
-    gb28181_action_box->setMaximumHeight(40);
     gb28181_runtime_box->setMinimumHeight(kRuntimeLogHeight);
     gb28181_runtime_box->setMaximumHeight(kRuntimeLogHeight + 36);
     gb28181_runtime_box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
@@ -2245,6 +2237,38 @@ void StreamCoreDemoQtWindow::BuildUi()
     player_url_edit_->setText(
         QString::fromUtf8("rtmp://192.0.2.1:1935/live/local_native"));
     player_url_edit_->setCursorPosition(0);
+    player_source_kind_combo_ = new QComboBox(player_page);
+    player_source_kind_combo_->setObjectName(
+        QString::fromUtf8("player_source_kind_combo"));
+    player_source_kind_combo_->addItem(
+        UiText("Media URL", "媒体 URL"),
+        static_cast<int>(STREAMCORE_PLAYER_SOURCE_KIND_URL));
+    player_source_kind_combo_->addItem(
+        QString::fromUtf8("WHEP"),
+        static_cast<int>(STREAMCORE_PLAYER_SOURCE_KIND_WHEP));
+    player_whep_options_panel_ = new QWidget(player_page);
+    player_whep_options_panel_->setObjectName(
+        QString::fromUtf8("player_whep_options_panel"));
+    player_whep_bearer_token_edit_ = new QLineEdit(player_whep_options_panel_);
+    player_whep_bearer_token_edit_->setObjectName(
+        QString::fromUtf8("player_whep_bearer_token_edit"));
+    player_whep_bearer_token_edit_->setEchoMode(QLineEdit::Password);
+    player_whep_bearer_token_edit_->setPlaceholderText(UiText(
+        "Optional Bearer token",
+        "可选 Bearer Token"));
+    player_whep_local_bind_ip_edit_ = new QLineEdit(player_whep_options_panel_);
+    player_whep_local_bind_ip_edit_->setObjectName(
+        QString::fromUtf8("player_whep_local_bind_ip_edit"));
+    player_whep_local_bind_ip_edit_->setPlaceholderText(UiText(
+        "Optional numeric local bind IP",
+        "可选本地 numeric IP"));
+    player_whep_allow_insecure_http_check_ =
+        new QCheckBox(UiText(
+            "Allow HTTP for isolated tests",
+            "仅隔离测试允许 HTTP"),
+            player_whep_options_panel_);
+    player_whep_allow_insecure_http_check_->setObjectName(
+        QString::fromUtf8("player_whep_allow_insecure_http_check"));
     player_latency_preset_combo_ = new QComboBox(player_page);
     player_latency_preset_combo_->setObjectName(
         QString::fromUtf8("player_latency_preset_combo"));
@@ -2844,6 +2868,22 @@ void StreamCoreDemoQtWindow::BuildUi()
         this,
         [this](const QString&) { UpdatePlayerSourceSummary(); });
     connect(
+        player_source_kind_combo_,
+        QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this,
+        [this, player_onvif_controls](int) {
+            const bool whep = IsPlayerWhepSelected();
+            if (player_whep_options_panel_ != nullptr)
+            {
+                player_whep_options_panel_->setVisible(whep);
+            }
+            if (player_onvif_controls != nullptr)
+            {
+                player_onvif_controls->setVisible(!whep);
+            }
+            UpdatePlayerSourceSummary();
+        });
+    connect(
         player_latency_preset_combo_,
         QOverload<int>::of(&QComboBox::currentIndexChanged),
         this,
@@ -3005,9 +3045,10 @@ void StreamCoreDemoQtWindow::BuildUi()
     action_layout->setContentsMargins(0, 0, 0, 0);
     action_layout->setSpacing(8);
     license_meta_action_layout->addWidget(copy_machine_id_button);
-    license_meta_action_layout->addWidget(share_logs_button_);
-    license_meta_action_layout->addWidget(upload_logs_button_);
     license_meta_action_layout->addStretch(1);
+    logs_action_layout->addWidget(share_logs_button_);
+    logs_action_layout->addWidget(upload_logs_button_);
+    logs_action_layout->addStretch(1);
 
     overview_layout->setContentsMargins(12, 10, 12, 10);
     overview_layout->setSpacing(0);
@@ -3500,8 +3541,40 @@ void StreamCoreDemoQtWindow::BuildUi()
     player_session_layout->setSpacing(kDesktopSectionSpacing);
     player_session_layout->addWidget(createFieldRow(
         player_page,
-        QString::fromUtf8("URL"),
+        UiText("Source", "来源"),
+        player_source_kind_combo_));
+    player_session_layout->addWidget(createFieldRow(
+        player_page,
+        UiText("URL / endpoint", "URL / endpoint"),
         player_url_edit_));
+    QGridLayout* player_whep_options_layout =
+        new QGridLayout(player_whep_options_panel_);
+    player_whep_options_layout->setContentsMargins(0, 0, 0, 0);
+    player_whep_options_layout->setHorizontalSpacing(kDesktopInlineSpacing);
+    player_whep_options_layout->setVerticalSpacing(kDesktopFieldRowSpacing);
+    player_whep_options_layout->addWidget(
+        createInlineLabel(
+            player_whep_options_panel_,
+            UiText("Bearer token", "Bearer Token")),
+        0,
+        0);
+    player_whep_options_layout->addWidget(player_whep_bearer_token_edit_, 0, 1);
+    player_whep_options_layout->addWidget(
+        createInlineLabel(
+            player_whep_options_panel_,
+            UiText("Local bind", "本地绑定")),
+        1,
+        0);
+    player_whep_options_layout->addWidget(player_whep_local_bind_ip_edit_, 1, 1);
+    player_whep_options_layout->addWidget(
+        player_whep_allow_insecure_http_check_,
+        2,
+        0,
+        1,
+        2);
+    player_whep_options_layout->setColumnStretch(1, 1);
+    player_whep_options_panel_->setVisible(false);
+    player_session_layout->addWidget(player_whep_options_panel_);
     player_tuning_layout->setContentsMargins(0, 0, 0, 0);
     player_tuning_layout->setSpacing(kDesktopSectionSpacing);
     player_tuning_layout->addWidget(createFieldRow(
@@ -3717,7 +3790,6 @@ void StreamCoreDemoQtWindow::BuildUi()
         UiText("Upper SIP", "上级 SIP"),
         gb_upper_endpoint_editor));
 
-    gb28181_action_box->setVisible(false);
     gb28181_runtime_layout->setContentsMargins(10, 10, 10, 10);
     gb28181_runtime_layout->setSpacing(kDesktopSectionSpacing);
     gb28181_runtime_layout->addWidget(gb28181_source_summary_label_);
@@ -3760,8 +3832,6 @@ void StreamCoreDemoQtWindow::BuildUi()
     license_box_layout->addWidget(license_status_label_);
     license_box_layout->addWidget(license_feature_label_);
     license_box_layout->addWidget(machine_id_label_);
-    license_box_layout->addWidget(log_status_label_);
-    license_box_layout->addWidget(operation_status_label_);
     license_box_layout->addLayout(license_meta_action_layout);
     status_tabs->addTab(
         capability_table_,
@@ -3771,6 +3841,13 @@ void StreamCoreDemoQtWindow::BuildUi()
         UiText("Runtime checks", "运行检查"));
     license_layout->addWidget(license_box);
     license_layout->addWidget(status_tabs, 1);
+
+    // 诊断页集中展示运行状态和日志操作，避免留下空白功能页。
+    logs_box_layout->addWidget(log_status_label_);
+    logs_box_layout->addWidget(operation_status_label_);
+    logs_box_layout->addLayout(logs_action_layout);
+    logs_layout->addWidget(logs_box);
+    logs_layout->addStretch(1);
 
     feature_tabs->addTab(publisher_page, UiText("Publisher", "推流"));
     feature_tabs->addTab(player_page, UiText("Player", "播放"));
@@ -5736,6 +5813,95 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
     UpdatePublisherButtons();
 }
 
+bool StreamCoreDemoQtWindow::IsPlayerWhepSelected() const
+{
+    if (player_source_kind_combo_ == nullptr)
+    {
+        return false;
+    }
+    return ComboValueOrIndex(
+        player_source_kind_combo_,
+        static_cast<int>(STREAMCORE_PLAYER_SOURCE_KIND_URL)) ==
+        static_cast<int>(STREAMCORE_PLAYER_SOURCE_KIND_WHEP);
+}
+
+streamcore_result_t StreamCoreDemoQtWindow::ApplyPlayerWhepOptions(
+    streamcore_player_handle player,
+    QString* errorSummary) const
+{
+    if (!IsPlayerWhepSelected())
+    {
+        return STREAMCORE_RESULT_OK;
+    }
+    if (player == nullptr)
+    {
+        if (errorSummary != nullptr)
+        {
+            *errorSummary = UiText(
+                "WHEP player is unavailable.",
+                "WHEP 播放器不可用。");
+        }
+        return STREAMCORE_RESULT_INVALID_ARGUMENT;
+    }
+
+    streamcore_player_whep_options_t options = {};
+    const streamcore_result_t defaultsResult =
+        streamcore_player_get_default_whep_options(&options, sizeof(options));
+    if (defaultsResult != STREAMCORE_RESULT_OK)
+    {
+        if (errorSummary != nullptr)
+        {
+            *errorSummary = UiText(
+                "This SDK package does not expose WHEP defaults.",
+                "当前 SDK 包未提供 WHEP 默认配置。");
+        }
+        return defaultsResult;
+    }
+
+    const QByteArray bearerToken = player_whep_bearer_token_edit_ != nullptr ?
+        player_whep_bearer_token_edit_->text().toUtf8() :
+        QByteArray();
+    const QByteArray localBindIp = player_whep_local_bind_ip_edit_ != nullptr ?
+        player_whep_local_bind_ip_edit_->text().trimmed().toUtf8() :
+        QByteArray();
+    options.bearer_token = bearerToken.isEmpty() ? nullptr : bearerToken.constData();
+    options.local_bind_ip = localBindIp.isEmpty() ? nullptr : localBindIp.constData();
+    options.allow_insecure_http =
+        player_whep_allow_insecure_http_check_ != nullptr &&
+        player_whep_allow_insecure_http_check_->isChecked() ? 1 : 0;
+
+    const streamcore_result_t result =
+        streamcore_player_set_whep_options(player, &options);
+    if (result != STREAMCORE_RESULT_OK && errorSummary != nullptr)
+    {
+        *errorSummary = UiText(
+            "WHEP options were rejected. Check the endpoint policy and numeric local bind address.",
+            "WHEP 配置被拒绝，请检查 endpoint 策略和 numeric 本地绑定地址。");
+    }
+    return result;
+}
+
+QString StreamCoreDemoQtWindow::PlayerDisplaySource() const
+{
+    const QString input = player_url_edit_ != nullptr ?
+        player_url_edit_->text().trimmed() :
+        QString();
+    if (!IsPlayerWhepSelected())
+    {
+        return input;
+    }
+
+    QUrl endpoint(input);
+    if (!endpoint.isValid())
+    {
+        return UiText("<invalid WHEP endpoint>", "<无效 WHEP endpoint>");
+    }
+    endpoint.setUserInfo(QString());
+    endpoint.setQuery(QString());
+    endpoint.setFragment(QString());
+    return endpoint.toString(QUrl::FullyEncoded);
+}
+
 void StreamCoreDemoQtWindow::UpdatePlayerSourceSummary()
 {
     if (player_url_edit_ == nullptr || player_source_summary_label_ == nullptr)
@@ -5743,7 +5909,7 @@ void StreamCoreDemoQtWindow::UpdatePlayerSourceSummary()
         return;
     }
 
-    QString input_text = player_url_edit_->text().trimmed();
+    QString input_text = PlayerDisplaySource();
     if (input_text.length() > 56)
     {
         input_text = input_text.left(53) + QString::fromUtf8("...");
@@ -5753,8 +5919,9 @@ void StreamCoreDemoQtWindow::UpdatePlayerSourceSummary()
         input_text = UiText("<enter a player URL>", "<请输入播放地址>");
     }
     QString summary = UiText(
-        "Input: %1\nMode: %2",
-        "输入：%1\n模式：%2")
+        "Source: %1 · %2\nMode: %3",
+        "来源：%1 · %2\n模式：%3")
+            .arg(IsPlayerWhepSelected() ? QString::fromUtf8("WHEP") : UiText("Media URL", "媒体 URL"))
             .arg(input_text)
             .arg(PlayerPlaybackModeSummary());
     if (!player_onvif_status_.isEmpty())
@@ -7311,26 +7478,9 @@ void StreamCoreDemoQtWindow::PollGb28181()
     streamcore_gb28181_runtime_info_t runtime_info = {};
     const streamcore_result_t runtime_result =
         streamcore_gb28181_get_runtime_info(active_gb28181_, &runtime_info);
-    gb28181_preview_label_->setText(
-        QString::fromUtf8(
-            "GB28181 running.\n"
-            "poll=%1 runtime=%2 registered=%3 sessions=%4 "
-            "bindings S/K=%5/%6 bytes S/R=%7/%8\n%9")
-            .arg(poll_result)
-            .arg(runtime_result)
-            .arg(runtime_info.is_registered)
-            .arg(runtime_info.active_session_count)
-            .arg(runtime_info.active_source_binding_count)
-            .arg(runtime_info.active_sink_binding_count)
-            .arg(static_cast<qulonglong>(runtime_info.sent_byte_count))
-            .arg(static_cast<qulonglong>(runtime_info.received_byte_count))
-            .arg(ToQString(runtime_info.media_state_summary[0] != '\0' ?
-                    runtime_info.media_state_summary :
-                    runtime_info.state_summary)));
-    return;
     gb28181_preview_label_->setText(UiText(
         "GB28181 running.\npoll=%1 runtime=%2 registered=%3 sessions=%4 bindings S/K=%5/%6 bytes S/R=%7/%8\n%9",
-        "GB28181 运行中。\npoll=%1 runtime=%2 registered=%3 active sessions=%4 media A/V=%5/%6\n%7")
+        "GB28181 运行中。\npoll=%1 runtime=%2 已注册=%3 会话=%4 源/目标绑定=%5/%6 发送/接收字节=%7/%8\n%9")
             .arg(poll_result)
             .arg(runtime_result)
             .arg(runtime_info.is_registered)
@@ -7386,6 +7536,7 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
     streamcore_render_target_t render_target = {};
     streamcore_player_preflight_t preflight = {};
     char error_text[STREAMCORE_TEXT_CAPACITY] = {};
+    streamcore_result_t whep_options_result = STREAMCORE_RESULT_OK;
     streamcore_result_t config_result = STREAMCORE_RESULT_OPERATION_FAILED;
     streamcore_result_t target_result = STREAMCORE_RESULT_OPERATION_FAILED;
     streamcore_result_t preflight_result = STREAMCORE_RESULT_OPERATION_FAILED;
@@ -7402,6 +7553,7 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
         player_url_edit_ != nullptr ?
             player_url_edit_->text().trimmed().toUtf8() :
             QByteArray("rtmp://192.0.2.1:1935/live/local_native");
+    QString whep_error;
 
     if (player == nullptr || native_handle == nullptr)
     {
@@ -7416,8 +7568,12 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
     }
 
     streamcore_player_get_default_config(&config);
-    config.session_name = "qt_desktop_render_target_probe";
-    config.source_kind = STREAMCORE_PLAYER_SOURCE_KIND_URL;
+    config.session_name = IsPlayerWhepSelected() ?
+        "qt_desktop_whep_render_target_probe" :
+        "qt_desktop_render_target_probe";
+    config.source_kind = IsPlayerWhepSelected() ?
+        STREAMCORE_PLAYER_SOURCE_KIND_WHEP :
+        STREAMCORE_PLAYER_SOURCE_KIND_URL;
     config.source_url = player_url.constData();
     config.render_target_id = "desktop_render_target_widget";
     const QString player_audio_env =
@@ -7457,7 +7613,11 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
     render_target.width_hint = desktop_render_target_widget_->width();
     render_target.height_hint = desktop_render_target_widget_->height();
 
-    config_result = streamcore_player_set_config(player, &config);
+    whep_options_result = ApplyPlayerWhepOptions(player, &whep_error);
+    if (whep_options_result == STREAMCORE_RESULT_OK)
+    {
+        config_result = streamcore_player_set_config(player, &config);
+    }
     if (config_result == STREAMCORE_RESULT_OK)
     {
         target_result = streamcore_player_set_render_target(player, &render_target);
@@ -7485,11 +7645,12 @@ void StreamCoreDemoQtWindow::BindDesktopRenderTarget()
             "Playback setup needs attention.",
             "Playback setup needs attention."));
         statusBar()->showMessage(
-            QString::fromUtf8("player config=%1 set=%2 preflight=%3 error=%4")
+            QString::fromUtf8("player whep_options=%1 config=%2 set=%3 preflight=%4 error=%5")
+                .arg(whep_options_result)
                 .arg(config_result)
                 .arg(target_result)
                 .arg(preflight_result)
-                .arg(ToQString(error_text)),
+                .arg(whep_error.isEmpty() ? ToQString(error_text) : whep_error),
             5000);
     }
 
@@ -7575,7 +7736,7 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                         error_message);
                 }
             }
-            else
+            else if (runtime_ready_)
             {
                 SetOperationStatus(
                     QString::fromUtf8("qt.autorun.diagnostics"),
@@ -7585,13 +7746,23 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                         "License, capability, and log diagnostics loaded.",
                         "授权、能力和日志诊断已加载。"));
             }
+            else
+            {
+                SetOperationStatus(
+                    QString::fromUtf8("qt.autorun.diagnostics"),
+                    QString::fromUtf8("-1"),
+                    QString::fromUtf8("failed"),
+                    UiText(
+                        "Runtime license validation failed.",
+                        "运行时授权校验失败。"));
+            }
 
             if (quit_after_ms > 0)
             {
                 close();
-                QCoreApplication::exit(0);
+                QCoreApplication::exit(runtime_ready_ ? 0 : 1);
                 QCoreApplication::quit();
-                std::_Exit(0);
+                std::_Exit(runtime_ready_ ? 0 : 1);
             }
             return;
         }
@@ -7986,11 +8157,6 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                 ApplySelectedOnvifDevice();
             }
 
-            const bool has_rtsp_url =
-                player_url_edit_ != nullptr &&
-                player_url_edit_->text().trimmed().startsWith(
-                    QString::fromUtf8("rtsp"),
-                    Qt::CaseInsensitive);
 #if !STREAMCORE_DEMO_HAS_ONVIF_STREAM_URI
             if (!onvif_devices_.isEmpty())
             {
@@ -8013,6 +8179,11 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                         player_onvif_status_);
             }
 #else
+            const bool has_rtsp_url =
+                player_url_edit_ != nullptr &&
+                player_url_edit_->text().trimmed().startsWith(
+                    QString::fromUtf8("rtsp"),
+                    Qt::CaseInsensitive);
             if (!onvif_devices_.isEmpty() && has_rtsp_url)
             {
                 SetOperationStatus(
@@ -8262,6 +8433,7 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
     streamcore_player_preflight_t preflight = {};
     streamcore_player_runtime_info_t runtime_info = {};
     char error_text[STREAMCORE_TEXT_CAPACITY] = {};
+    streamcore_result_t whep_options_result = STREAMCORE_RESULT_OK;
     streamcore_result_t config_result = STREAMCORE_RESULT_OPERATION_FAILED;
     streamcore_result_t target_result = STREAMCORE_RESULT_OPERATION_FAILED;
     streamcore_result_t event_callback_result =
@@ -8279,6 +8451,7 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
     const streamcore_render_platform_t render_platform = STREAMCORE_RENDER_PLATFORM_LINUX;
 #endif
     active_player_url_ = player_url_edit_->text().trimmed().toUtf8();
+    QString whep_error;
     if (active_player_url_.isEmpty())
     {
         active_player_url_ = QByteArray("rtmp://192.0.2.1:1935/live/local_native");
@@ -8304,8 +8477,12 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
     }
 
     streamcore_player_get_default_config(&config);
-    config.session_name = "qt_desktop_url_player";
-    config.source_kind = STREAMCORE_PLAYER_SOURCE_KIND_URL;
+    config.session_name = IsPlayerWhepSelected() ?
+        "qt_desktop_whep_player" :
+        "qt_desktop_url_player";
+    config.source_kind = IsPlayerWhepSelected() ?
+        STREAMCORE_PLAYER_SOURCE_KIND_WHEP :
+        STREAMCORE_PLAYER_SOURCE_KIND_URL;
     config.source_url = active_player_url_.constData();
     config.render_target_id = "desktop_render_target_widget";
     const QString player_audio_env =
@@ -8345,7 +8522,11 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
     render_target.width_hint = desktop_render_target_widget_->width();
     render_target.height_hint = desktop_render_target_widget_->height();
 
-    config_result = streamcore_player_set_config(player, &config);
+    whep_options_result = ApplyPlayerWhepOptions(player, &whep_error);
+    if (whep_options_result == STREAMCORE_RESULT_OK)
+    {
+        config_result = streamcore_player_set_config(player, &config);
+    }
     if (config_result == STREAMCORE_RESULT_OK)
     {
         target_result = streamcore_player_set_render_target(player, &render_target);
@@ -8394,16 +8575,18 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
             player_status_label_->setText(UiText(
                 "Playback succeeded: %1 · %2",
                 "播放成功：%1 · %2")
-                    .arg(QString::fromUtf8(active_player_url_.constData()))
+                    .arg(PlayerDisplaySource())
                     .arg(ToQString(runtime_info.state_summary)));
         }
     }
     else
     {
         active_player_start_wall_time_ms_ = 0;
-        const QString player_error = !ToQString(error_text).isEmpty() ?
-            ToQString(error_text) :
-            ToQString(preflight.detail);
+        const QString player_error = !whep_error.isEmpty() ?
+            whep_error :
+            (!ToQString(error_text).isEmpty() ?
+                ToQString(error_text) :
+                ToQString(preflight.detail));
         streamcore_player_destroy(player);
         SetOperationStatus(
             QString::fromUtf8("player.start"),
@@ -8435,7 +8618,8 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
             "Playback failed. See status details.",
             "播放失败，请查看状态详情。"));
         statusBar()->showMessage(
-            QString::fromUtf8("player config=%1 set=%2 event=%3 preflight=%4 start=%5 runtime=%6 state=%7 error=%8")
+            QString::fromUtf8("player whep_options=%1 config=%2 set=%3 event=%4 preflight=%5 start=%6 runtime=%7 state=%8 error=%9")
+                .arg(whep_options_result)
                 .arg(config_result)
                 .arg(target_result)
                 .arg(event_callback_result)
@@ -8443,7 +8627,7 @@ void StreamCoreDemoQtWindow::StartPlayerUrl()
                 .arg(start_result)
                 .arg(runtime_result)
                 .arg(ToQString(streamcore_session_state_name(runtime_info.state)))
-                .arg(ToQString(error_text)),
+                .arg(whep_error.isEmpty() ? ToQString(error_text) : whep_error),
             5000);
     }
     UpdatePlayerButtons();
@@ -8501,12 +8685,34 @@ void StreamCoreDemoQtWindow::StopPlayerUrl()
 
 void StreamCoreDemoQtWindow::UpdatePlayerButtons()
 {
+    const bool running = active_player_ != nullptr;
     if (player_start_button_ != nullptr)
     {
         player_start_button_->setEnabled(true);
-        player_start_button_->setText(active_player_ != nullptr ?
+        player_start_button_->setText(running ?
             UiText("Stop playback", "停止播放") :
             UiText("Play", "播放"));
+    }
+    // 会话运行期间锁定来源和创建期 WHEP 参数，避免界面状态与实际会话合同分离。
+    if (player_source_kind_combo_ != nullptr)
+    {
+        player_source_kind_combo_->setEnabled(!running);
+    }
+    if (player_url_edit_ != nullptr)
+    {
+        player_url_edit_->setEnabled(!running);
+    }
+    if (player_whep_bearer_token_edit_ != nullptr)
+    {
+        player_whep_bearer_token_edit_->setEnabled(!running);
+    }
+    if (player_whep_local_bind_ip_edit_ != nullptr)
+    {
+        player_whep_local_bind_ip_edit_->setEnabled(!running);
+    }
+    if (player_whep_allow_insecure_http_check_ != nullptr)
+    {
+        player_whep_allow_insecure_http_check_->setEnabled(!running);
     }
 }
 
@@ -8595,7 +8801,25 @@ void StreamCoreDemoQtWindow::LoadSnapshot()
 {
     streamcore_demo_snapshot_t snapshot;
     char error_text[STREAMCORE_TEXT_CAPACITY];
+    runtime_ready_ = false;
+#if defined(Q_OS_MACOS)
+    const streamcore_result_t configure_result =
+        StreamCoreDemoQtConfigureMacRuntime(
+            STREAMCORE_DEMO_LICENSE_PATH,
+            error_text,
+            sizeof(error_text));
+    if (configure_result != STREAMCORE_RESULT_OK)
+    {
+        ShowFailure(ToQString(error_text));
+        return;
+    }
+#endif
     const streamcore_result_t result = streamcore_demo_collect_snapshot(
+#if defined(Q_OS_MACOS)
+        0,
+#else
+        1,
+#endif
         &snapshot,
         error_text,
         sizeof(error_text));
@@ -8606,6 +8830,7 @@ void StreamCoreDemoQtWindow::LoadSnapshot()
         return;
     }
 
+    runtime_ready_ = true;
     PopulateOverview(snapshot);
     PopulateSessionTable(snapshot);
     PopulateCapabilityTable(snapshot);
@@ -9034,8 +9259,10 @@ void StreamCoreDemoQtWindow::ShowFailure(const QString& message)
     product_meta_label_->setText(UiText(
         "Startup failed.",
         "Startup failed."));
-    license_status_label_->setText(UiText("License: load_failed", "授权：load_failed"));
-    license_feature_label_->clear();
+    license_status_label_->setText(UiText("License: invalid", "授权：invalid"));
+    // Demo 只展示 SDK 返回的固定授权诊断，不输出注册码正文；这样错误 Bundle、
+    // 错误平台或读取失败在截图和现场排障中都不会被笼统的 load_failed 混淆。
+    license_feature_label_->setText(message);
     log_status_label_->clear();
     machine_id_label_->clear();
     current_machine_id_.clear();

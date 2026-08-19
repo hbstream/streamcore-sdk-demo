@@ -21,14 +21,6 @@
 #define STREAMCORE_DEMO_LICENSE_PATH ""
 #endif
 
-#ifndef STREAMCORE_DEMO_PUBLIC_KEY_PATH
-#define STREAMCORE_DEMO_PUBLIC_KEY_PATH ""
-#endif
-
-#ifndef STREAMCORE_DEMO_APP_ID
-#define STREAMCORE_DEMO_APP_ID ""
-#endif
-
 #define STREAMCORE_DEMO_PATH_CAPACITY 1024
 
 typedef struct streamcore_demo_transcode_callback_state_t
@@ -37,11 +29,15 @@ typedef struct streamcore_demo_transcode_callback_state_t
     streamcore_publisher_transcode_report_t report;
 } streamcore_demo_transcode_callback_state_t;
 
+// 将可空文本安全写入固定容量缓冲区；空间不足时保留前缀并保证 NUL 终止。
 static void streamcore_demo_write_text(
     char* outText,
     size_t capacity,
     const char* text)
 {
+    size_t text_length = 0;
+    size_t copy_length = 0;
+
     if ((outText == NULL) || (capacity == 0))
     {
         return;
@@ -53,20 +49,26 @@ static void streamcore_demo_write_text(
         return;
     }
 
-#if defined(_MSC_VER)
-    strncpy_s(outText, capacity, text, _TRUNCATE);
-#else
-    strncpy(outText, text, capacity - 1);
-    outText[capacity - 1] = '\0';
-#endif
+    // 显式计算截断位置，避免 strncpy 的填充语义和编译器截断歧义。
+    text_length = strlen(text);
+    copy_length = text_length < capacity - 1 ? text_length : capacity - 1;
+    if (copy_length > 0)
+    {
+        memcpy(outText, text, copy_length);
+    }
+    outText[copy_length] = '\0';
 }
 
+// 向已有 NUL 终止字符串追加文本；达到容量上限时保留当前内容并安全截断。
 static void streamcore_demo_append_text(
     char* outText,
     size_t capacity,
     const char* text)
 {
     size_t current_length = 0;
+    size_t text_length = 0;
+    size_t copy_length = 0;
+    size_t remaining_capacity = 0;
 
     if (outText == NULL || capacity == 0 || text == NULL || text[0] == '\0')
     {
@@ -79,12 +81,15 @@ static void streamcore_demo_append_text(
         return;
     }
 
-#if defined(_MSC_VER)
-    strncpy_s(outText + current_length, capacity - current_length, text, _TRUNCATE);
-#else
-    strncpy(outText + current_length, text, capacity - current_length - 1);
-    outText[capacity - 1] = '\0';
-#endif
+    // 只复制剩余容量可容纳的字节，并在实际追加位置终止字符串。
+    remaining_capacity = capacity - current_length - 1;
+    text_length = strlen(text);
+    copy_length = text_length < remaining_capacity ? text_length : remaining_capacity;
+    if (copy_length > 0)
+    {
+        memcpy(outText + current_length, text, copy_length);
+    }
+    outText[current_length + copy_length] = '\0';
 }
 
 static const char* streamcore_demo_env_text(
@@ -99,6 +104,7 @@ static const char* streamcore_demo_env_text(
     return fallback;
 }
 
+// 判断普通文件是否可读；仅用于 Demo 资源预检，不主动搜索许可证路径。
 static int streamcore_demo_file_exists(const char* path)
 {
     FILE* file = NULL;
@@ -108,7 +114,14 @@ static int streamcore_demo_file_exists(const char* path)
         return 0;
     }
 
+#if defined(_MSC_VER)
+    if (fopen_s(&file, path, "rb") != 0)
+    {
+        file = NULL;
+    }
+#else
     file = fopen(path, "rb");
+#endif
     if (file == NULL)
     {
         return 0;
@@ -706,6 +719,7 @@ static streamcore_result_t streamcore_demo_collect_capture_snapshot(
 }
 
 streamcore_result_t streamcore_demo_collect_snapshot(
+    int configureRuntime,
     streamcore_demo_snapshot_t* outSnapshot,
     char* outErrorText,
     size_t errorCapacity)
@@ -714,7 +728,6 @@ streamcore_result_t streamcore_demo_collect_snapshot(
     streamcore_runtime_config_t runtime_config;
     char machine_error_text[STREAMCORE_TEXT_CAPACITY];
     char license_path[STREAMCORE_DEMO_PATH_CAPACITY];
-    char public_key_path[STREAMCORE_DEMO_PATH_CAPACITY];
 
     if (outSnapshot == NULL)
     {
@@ -729,7 +742,6 @@ streamcore_result_t streamcore_demo_collect_snapshot(
     memset(&runtime_config, 0, sizeof(runtime_config));
     memset(machine_error_text, 0, sizeof(machine_error_text));
     memset(license_path, 0, sizeof(license_path));
-    memset(public_key_path, 0, sizeof(public_key_path));
     streamcore_demo_write_text(outErrorText, errorCapacity, "");
 
     streamcore_get_product_info(&outSnapshot->product_info);
@@ -739,14 +751,7 @@ streamcore_result_t streamcore_demo_collect_snapshot(
         STREAMCORE_DEMO_LICENSE_PATH,
         license_path,
         sizeof(license_path));
-    streamcore_demo_resolve_runtime_path(
-        STREAMCORE_DEMO_PUBLIC_KEY_PATH,
-        public_key_path,
-        sizeof(public_key_path));
-    runtime_config.expected_product = "streamcore_demo";
     runtime_config.license_path = license_path;
-    runtime_config.public_key_pem_path = public_key_path;
-    runtime_config.app_id = STREAMCORE_DEMO_APP_ID;
 
     outSnapshot->log_config_result = streamcore_log_configure(
         streamcore_demo_env_text(
@@ -775,13 +780,18 @@ streamcore_result_t streamcore_demo_collect_snapshot(
             "unavailable");
     }
 
-    result = streamcore_runtime_configure(
-        &runtime_config,
-        outErrorText,
-        errorCapacity);
-    if (result != STREAMCORE_RESULT_OK)
+    // macOS Qt 已由公开 Apple wrapper 写入 Bundle identity；这里传零时只读同一
+    // 进程级 runtime，不能再用缺少 Apple identity 的 native C 配置覆盖它。
+    if (configureRuntime != 0)
     {
-        return result;
+        result = streamcore_runtime_configure(
+            &runtime_config,
+            outErrorText,
+            errorCapacity);
+        if (result != STREAMCORE_RESULT_OK)
+        {
+            return result;
+        }
     }
 
     result = streamcore_runtime_get_license_info(
@@ -791,6 +801,18 @@ streamcore_result_t streamcore_demo_collect_snapshot(
     if (result != STREAMCORE_RESULT_OK)
     {
         return result;
+    }
+    if (!outSnapshot->license_info.is_configured ||
+        !outSnapshot->license_info.is_license_loaded ||
+        !outSnapshot->license_info.is_license_valid)
+    {
+        streamcore_demo_write_text(
+            outErrorText,
+            errorCapacity,
+            outSnapshot->license_info.summary[0] != '\0' ?
+                outSnapshot->license_info.summary :
+                "demo runtime license is not ready");
+        return STREAMCORE_RESULT_OPERATION_FAILED;
     }
 
     if (outSnapshot->license_info.machine_id[0] != '\0')

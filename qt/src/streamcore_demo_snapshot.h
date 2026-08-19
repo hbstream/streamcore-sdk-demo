@@ -93,11 +93,15 @@ typedef struct streamcore_demo_snapshot_t
 } streamcore_demo_snapshot_t;
 
 /*
- * Collect the complete runtime snapshot needed by the demo.
- * Desktop builds load a demo license with an explicit app identity so the same
- * license cannot be reused by an unrelated process or application bundle.
+ * Collects the complete runtime snapshot used by the desktop demo and its
+ * automation. When configureRuntime is non-zero, this function submits the
+ * packaged license through the native C runtime. macOS Qt passes zero after
+ * the public Objective-C wrapper has collected the Bundle ID and configured
+ * the same process-wide runtime, preventing an identity-free C configuration
+ * from overwriting the validated Apple state.
  */
 streamcore_result_t streamcore_demo_collect_snapshot(
+    int configureRuntime,
     streamcore_demo_snapshot_t* outSnapshot,
     char* outErrorText,
     size_t errorCapacity);

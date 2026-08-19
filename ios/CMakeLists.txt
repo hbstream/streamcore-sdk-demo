@@ -109,7 +109,6 @@ set_target_properties(hbr_streamcore_sdk
 
 set(streamcore_demo_ios_resources
     Resources/streamcore_demo.lic
-    Resources/streamcore_demo_public.pem
     StreamCoreDemoLaunchScreen.storyboard
     Resources/Assets.xcassets
 )
@@ -145,8 +144,8 @@ set_target_properties(streamcore_demo_ios
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_LIST_DIR}/StreamCoreDemoInfo.plist"
         MACOSX_BUNDLE_BUNDLE_NAME "StreamCore SDK Demo"
         MACOSX_BUNDLE_GUI_IDENTIFIER "${STREAMCORE_DEMO_IOS_BUNDLE_IDENTIFIER}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.5.1"
-        MACOSX_BUNDLE_BUNDLE_VERSION "1.5.1"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "1.6.2"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1.6.2"
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${STREAMCORE_DEMO_IOS_BUNDLE_IDENTIFIER}"
         XCODE_ATTRIBUTE_PRODUCT_NAME "StreamCoreDemo"
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
@@ -155,7 +154,7 @@ set_target_properties(streamcore_demo_ios
         XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
         XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
         XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@executable_path/Frameworks"
-        XCODE_ATTRIBUTE_MARKETING_VERSION "1.5.1"
+        XCODE_ATTRIBUTE_MARKETING_VERSION "1.6.2"
         XCODE_ATTRIBUTE_CURRENT_PROJECT_VERSION "1"
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "13.0"
         XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"

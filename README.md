@@ -1,4 +1,4 @@
-﻿# StreamCore SDK Demo
+# StreamCore SDK Demo
 
 <p>
   <a href="#english">English</a> |

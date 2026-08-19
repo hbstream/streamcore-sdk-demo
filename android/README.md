@@ -4,6 +4,10 @@ English: [README.en.md](README.en.md)
 
 本目录提供 StreamCore SDK 的 Android 示例，覆盖播放、摄像头与麦克风采集、推流、GB28181 和授权状态查看。示例只调用公开 Android API 与 `com.hbr.streamcore` SDK 接口。
 
+## WHEP 播放（1.6.0）
+
+Player 页通过“来源类型”显式选择媒体 URL 或 WHEP，不根据地址文本猜测协议。WHEP 模式可填写遮蔽显示的 Bearer Token、可选 numeric 本地绑定 IP，并可为 localhost/隔离测试显式允许 HTTP；默认仍强制 HTTPS。WHEP 属于 Professional 的 `p2_whep_player` 能力，配置失败时 Demo 会在联网前停止，且状态区不会回显 token、endpoint query 或绑定地址。custom CA、ICE/TURN 与 relay-only 等高级项请通过 SDK 正式 `StreamCorePlayer.WhepOptions` 接口配置。
+
 ## 准备 SDK
 
 从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 Android SDK 包，将 AAR 放入：
@@ -32,7 +36,15 @@ Linux / macOS：
 
 ## Demo 授权
 
-Demo 授权仅绑定本示例的应用包名，用于体验 Standard 与 Professional 能力，并显示 `hbrun.com` 水印。更改包名后不能继续使用该授权；正式集成需要申请对应应用身份的商业授权。
+可运行 APK 已把 `SC-LIC-ENC-v1` 加密 Demo 授权放入
+`app/src/main/assets/streamcore_demo.lic`。应用首次初始化时把它复制到自身
+`filesDir`，再通过公开 runtime 配置提交私有文件路径；用户不需要填写注册码，
+授权也不会写入公共存储。自行编译时必须保留该 asset 和默认包名。
+
+Demo 授权仅绑定本示例包名，不要求用户提交正式应用的 Release 签名证书，
+用于体验 Standard 与 Professional 能力并显示 `hbrun.com` 水印。更改包名后不能
+继续使用；正式集成需要申请“applicationId + Release 签名证书 SHA-256”商业授权，
+不能继续使用 Demo 授权或 Demo AAR。
 
 ## 依赖
 

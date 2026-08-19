@@ -51,7 +51,7 @@ int main(int argc, char* argv[])
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QString::fromUtf8("HBR"));
     QCoreApplication::setApplicationName(QString::fromUtf8("StreamCoreDemoQt"));
-    QCoreApplication::setApplicationVersion(QString::fromUtf8("1.5.1"));
+    QCoreApplication::setApplicationVersion(QString::fromUtf8("1.6.2"));
     ConfigureStableProductDirectories();
 
     StreamCoreDemoQtWindow window;

@@ -17,8 +17,14 @@
     <string name="tab_player">Player</string>
     <string name="tab_publisher">Publisher</string>
     <string name="tab_gb28181">GB28181</string>
+    <string name="player_source_kind_label">Source type</string>
+    <string name="player_source_media_url_option">Media URL</string>
+    <string name="player_source_whep_option">WHEP</string>
     <string name="player_source_url_label">Playback URL</string>
-    <string name="player_source_url_hint">Player URL (rtmp/rtsp/http/file)</string>
+    <string name="player_source_url_hint">Media URL or WHEP endpoint</string>
+    <string name="player_whep_bearer_token_hint">Optional Bearer token</string>
+    <string name="player_whep_local_bind_ip_hint">Optional numeric local bind IP</string>
+    <string name="player_whep_allow_insecure_http">Allow HTTP for isolated tests</string>
     <string name="default_player_source_url">rtmp://192.0.2.1:1935/live/local_native</string>
     <string name="start_player_preview">Play</string>
     <string name="stop_player_preview">Stop</string>

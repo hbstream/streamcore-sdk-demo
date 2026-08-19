@@ -9,6 +9,7 @@
 
 #import <AVFoundation/AVFoundation.h>
 #import <Foundation/Foundation.h>
+#import <StreamCoreSDK.h>
 
 #include <dlfcn.h>
 #include <string>
@@ -38,6 +39,107 @@ static bool HasUsageDescription(NSString* key)
     NSDictionary* info = [[NSBundle mainBundle] infoDictionary];
     NSString* value = [info objectForKey:key];
     return value != nil && [value length] > 0;
+}
+
+// 从 Apple wrapper 的固定 detail 中提取机器可读 summary；不把注册码、文件路径或
+// 完整诊断详情复制到 Demo 界面和自动化截图。
+static std::string RuntimeLicenseSummary(HBRStreamCoreOperationStatus* status)
+{
+    NSString* detail = status != nil ? status.detail : nil;
+    const char* detailText = detail != nil ? [detail UTF8String] : nullptr;
+    if (detailText != nullptr)
+    {
+        const std::string text(detailText);
+        const std::string marker("summary=");
+        const size_t begin = text.find(marker);
+        if (begin != std::string::npos)
+        {
+            const size_t valueBegin = begin + marker.size();
+            const size_t valueEnd = text.find_first_of(",\r\n", valueBegin);
+            const std::string summary = text.substr(
+                valueBegin,
+                valueEnd == std::string::npos ?
+                    std::string::npos :
+                    valueEnd - valueBegin);
+            if (!summary.empty() && summary.size() <= 128)
+            {
+                return summary;
+            }
+        }
+    }
+
+    NSString* statusName = status != nil ? status.statusName : nil;
+    const char* statusText = statusName != nil ? [statusName UTF8String] : nullptr;
+    return statusText != nullptr && statusText[0] != '\0' ?
+        std::string(statusText) :
+        std::string("runtime_configure_failed");
+}
+
+streamcore_result_t StreamCoreDemoQtConfigureMacRuntime(
+    const char* configuredLicensePath,
+    char* message,
+    size_t messageCapacity)
+{
+    if (configuredLicensePath == nullptr || configuredLicensePath[0] == '\0')
+    {
+        SetPermissionMessage(message, messageCapacity, "demo license path is required");
+        return STREAMCORE_RESULT_INVALID_ARGUMENT;
+    }
+
+    @autoreleasepool
+    {
+        NSString* licensePath = [NSString stringWithUTF8String:configuredLicensePath];
+        if (licensePath == nil || [licensePath length] == 0)
+        {
+            SetPermissionMessage(message, messageCapacity, "demo license path is invalid UTF-8");
+            return STREAMCORE_RESULT_INVALID_ARGUMENT;
+        }
+        if (![licensePath isAbsolutePath])
+        {
+            NSString* executablePath = [[NSBundle mainBundle] executablePath];
+            if (executablePath == nil || [executablePath length] == 0)
+            {
+                SetPermissionMessage(
+                    message,
+                    messageCapacity,
+                    "macOS app executable path is unavailable");
+                return STREAMCORE_RESULT_OPERATION_FAILED;
+            }
+            licensePath = [[executablePath stringByDeletingLastPathComponent]
+                stringByAppendingPathComponent:licensePath];
+        }
+
+        BOOL isDirectory = NO;
+        if (![[NSFileManager defaultManager] fileExistsAtPath:licensePath
+                                                 isDirectory:&isDirectory] ||
+            isDirectory)
+        {
+            SetPermissionMessage(message, messageCapacity, "demo license file is unavailable");
+            return STREAMCORE_RESULT_OPERATION_FAILED;
+        }
+
+        HBRStreamCoreRuntimeConfig* config =
+            [[HBRStreamCoreSDK runtime] defaultConfig];
+        config.licensePath = licensePath;
+        HBRStreamCoreOperationStatus* status =
+            [[HBRStreamCoreSDK runtime] configure:config];
+        if (status == nil)
+        {
+            SetPermissionMessage(message, messageCapacity, "Apple runtime returned no status");
+            return STREAMCORE_RESULT_OPERATION_FAILED;
+        }
+        if (![status isOk])
+        {
+            SetPermissionMessage(
+                message,
+                messageCapacity,
+                "license validation failed: " + RuntimeLicenseSummary(status));
+            return static_cast<streamcore_result_t>(status.resultCode);
+        }
+    }
+
+    SetPermissionMessage(message, messageCapacity, "Apple runtime configured");
+    return STREAMCORE_RESULT_OK;
 }
 
 static bool RequestPermissionForMediaType(

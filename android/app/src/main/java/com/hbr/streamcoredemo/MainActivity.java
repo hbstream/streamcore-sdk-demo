@@ -45,6 +45,7 @@ import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.AdapterView;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -153,6 +154,8 @@ public final class MainActivity extends AppCompatActivity {
     private static final String AUTORUN_UPLOAD = "upload";
     private static final int AUTORUN_SURFACE_RETRY_LIMIT = 40;
     private static final int AUTORUN_SURFACE_RETRY_DELAY_MS = 250;
+    private static final int AUTORUN_GB_STOP_RETRY_LIMIT = 80;
+    private static final int AUTORUN_GB_STOP_RETRY_DELAY_MS = 250;
 
     private enum PreviewDisplayMode {
         STRETCH,
@@ -200,6 +203,7 @@ public final class MainActivity extends AppCompatActivity {
     private View publisherPanel;
     private View gb28181Panel;
     private View playerOnvifControls;
+    private View playerWhepControls;
     private View gbVideoFileRow;
     private View publisherCameraSourceRow;
     private View publisherMediaFileRow;
@@ -254,6 +258,7 @@ public final class MainActivity extends AppCompatActivity {
     private Button stopGb28181Button;
     private Spinner playerDecodeModeSpinner;
     private Spinner playerRenderBackendSpinner;
+    private Spinner playerSourceKindSpinner;
     private Spinner cameraFacingSpinner;
     private Spinner publisherSourceSpinner;
     private Spinner publisherAudioSpinner;
@@ -262,6 +267,9 @@ public final class MainActivity extends AppCompatActivity {
     private final List<Spinner> previewDisplayModeSpinners = new ArrayList<>();
     private Button languageButton;
     private EditText playerSourceUrlInput;
+    private EditText playerWhepBearerTokenInput;
+    private EditText playerWhepLocalBindIpInput;
+    private CheckBox playerWhepAllowInsecureHttpCheckBox;
     private EditText playerBufferMsInput;
     private EditText playerAudioQueueInput;
     private EditText playerVideoQueueInput;
@@ -333,6 +341,12 @@ public final class MainActivity extends AppCompatActivity {
     private boolean publisherPermissionRequestInProgress;
     private boolean publisherPermissionResumeDirectTransport;
     private boolean gb28181StartInProgress;
+    private boolean gb28181StopInProgress;
+    private boolean gb28181StartSucceeded;
+    private boolean gb28181StopSucceeded;
+    private boolean gb28181AutorunStopRequested;
+    @NonNull
+    private String gb28181StopFailureStatus = "gb28181_stop_not_started";
     private boolean gbPreviewStartInProgress;
     private boolean onvifSearchInProgress;
     private boolean onvifResolveInProgress;
@@ -390,6 +404,7 @@ public final class MainActivity extends AppCompatActivity {
         publisherSummaryText = findViewById(R.id.publisher_summary_text);
         gb28181SummaryText = findViewById(R.id.gb28181_summary_text);
         playerOnvifControls = findViewById(R.id.player_onvif_controls);
+        playerWhepControls = findViewById(R.id.player_whep_controls);
         gbVideoFileRow = findViewById(R.id.gb_video_file_row);
         publisherCameraSourceRow = findViewById(R.id.publisher_camera_source_row);
         publisherMediaFileRow = findViewById(R.id.publisher_media_file_row);
@@ -439,6 +454,7 @@ public final class MainActivity extends AppCompatActivity {
         stopGb28181Button = findViewById(R.id.stop_gb28181_button);
         playerDecodeModeSpinner = findViewById(R.id.player_decode_mode_spinner);
         playerRenderBackendSpinner = findViewById(R.id.player_render_backend_spinner);
+        playerSourceKindSpinner = findViewById(R.id.player_source_kind_spinner);
         cameraFacingSpinner = findViewById(R.id.camera_facing_spinner);
         publisherSourceSpinner = findViewById(R.id.publisher_source_spinner);
         publisherAudioSpinner = findViewById(R.id.publisher_audio_spinner);
@@ -451,6 +467,10 @@ public final class MainActivity extends AppCompatActivity {
         previewDisplayModeSpinners.add(findViewById(R.id.gb_preview_display_mode_spinner));
         languageButton = findViewById(R.id.language_button);
         playerSourceUrlInput = findViewById(R.id.player_source_url_input);
+        playerWhepBearerTokenInput = findViewById(R.id.player_whep_bearer_token_input);
+        playerWhepLocalBindIpInput = findViewById(R.id.player_whep_local_bind_ip_input);
+        playerWhepAllowInsecureHttpCheckBox =
+                findViewById(R.id.player_whep_allow_insecure_http_check);
         playerBufferMsInput = findViewById(R.id.player_buffer_ms_input);
         playerAudioQueueInput = findViewById(R.id.player_audio_queue_input);
         playerVideoQueueInput = findViewById(R.id.player_video_queue_input);
@@ -820,10 +840,92 @@ public final class MainActivity extends AppCompatActivity {
                 AUTORUN_SURFACE_RETRY_DELAY_MS);
     }
 
+    /** 启动 GB28181 真机自动化，并为异步注销准备独立的完成状态。 */
     private void runGb28181Autorun(Intent intent) {
         selectTab(R.id.tab_gb28181);
+        gb28181StartSucceeded = false;
+        gb28181StopSucceeded = false;
+        gb28181AutorunStopRequested = false;
+        gb28181StopFailureStatus = "gb28181_stop_not_started";
         startGb28181Device();
-        scheduleAutorunFinish(intent, this::stopGb28181Device);
+        scheduleGb28181AutorunFinish(intent);
+    }
+
+    /**
+     * 按调用方给出的媒体运行时长启动停止等待。
+     *
+     * <p>此处不能直接调用 stop：启动线程可能尚未把成功会话交回 UI 线程。停止请求由
+     * {@link #finishGb28181AutorunWhenStopped(View, int)} 在确认会话可停止后发起。</p>
+     */
+    private void scheduleGb28181AutorunFinish(Intent intent) {
+        final int quitMs = intent == null ? 0 : intent.getIntExtra(EXTRA_QUIT_MS, 0);
+        if (quitMs <= 0) {
+            return;
+        }
+        final View rootView = getWindow().getDecorView();
+        rootView.postDelayed(
+                () -> finishGb28181AutorunWhenStopped(rootView, 0),
+                quitMs);
+    }
+
+    /**
+     * 有界等待启动交接与停止完成，只在注销、runtime stop 和 close 全部成功后记录成功。
+     *
+     * <p>启动等待与停止等待分别拥有完整重试预算，避免启动在截止点完成时只给异步停止
+     * 留下一个轮询窗口。超时和任一阶段失败均使用固定状态收口，不把 Activity 退出冒充
+     * 协议注销成功。</p>
+     */
+    private void finishGb28181AutorunWhenStopped(View rootView, int attempt) {
+        if (!gb28181AutorunStopRequested) {
+            if ((gb28181StartInProgress || gb28181PermissionRequestInProgress)
+                    && attempt < AUTORUN_GB_STOP_RETRY_LIMIT) {
+                rootView.postDelayed(
+                        () -> finishGb28181AutorunWhenStopped(rootView, attempt + 1),
+                        AUTORUN_GB_STOP_RETRY_DELAY_MS);
+                return;
+            }
+            if (!gb28181StartSucceeded || activeGb28181Session == null) {
+                recordDemoStatus(
+                        "autorun.finish",
+                        "-1",
+                        "gb28181_start_not_ready",
+                        "GB28181 did not reach a stoppable running state.");
+                renderDemoStatusText();
+                rootView.postDelayed(this::finish, 700);
+                return;
+            }
+            gb28181AutorunStopRequested = true;
+            stopGb28181Device();
+            finishGb28181AutorunWhenStopped(rootView, 0);
+            return;
+        }
+        if (gb28181StopInProgress) {
+            if (attempt < AUTORUN_GB_STOP_RETRY_LIMIT) {
+                rootView.postDelayed(
+                        () -> finishGb28181AutorunWhenStopped(rootView, attempt + 1),
+                        AUTORUN_GB_STOP_RETRY_DELAY_MS);
+                return;
+            }
+            recordDemoStatus(
+                    "autorun.finish",
+                    "-1",
+                    "gb28181_stop_timeout",
+                    "GB28181 stop did not complete before the autorun timeout.");
+        } else if (gb28181StopSucceeded) {
+            recordDemoStatus(
+                    "autorun.finish",
+                    "0",
+                    "done",
+                    "Android demo autorun finish requested.");
+        } else {
+            recordDemoStatus(
+                    "autorun.finish",
+                    "-1",
+                    gb28181StopFailureStatus,
+                    "GB28181 stop did not complete successfully.");
+        }
+        renderDemoStatusText();
+        rootView.postDelayed(this::finish, 700);
     }
 
     private void runLogPackageAutorun(Intent intent) {
@@ -1117,6 +1219,26 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void configureParameterControls() {
+        playerSourceKindSpinner.setAdapter(buildSpinnerAdapter(
+                getString(R.string.player_source_media_url_option),
+                getString(R.string.player_source_whep_option)));
+        playerSourceKindSpinner.setSelection(0);
+        playerSourceKindSpinner.setOnItemSelectedListener(
+                new AdapterView.OnItemSelectedListener() {
+                    @Override
+                    public void onItemSelected(
+                            AdapterView<?> parent,
+                            View view,
+                            int position,
+                            long id) {
+                        applyPlayerSourceUiState();
+                    }
+
+                    @Override
+                    public void onNothingSelected(AdapterView<?> parent) {
+                        applyPlayerSourceUiState();
+                    }
+                });
         final ArrayAdapter<String> decodeAdapter = buildSpinnerAdapter(
                 getString(R.string.player_decode_software_option),
                 getString(R.string.player_decode_hardware_option));
@@ -1287,6 +1409,7 @@ public final class MainActivity extends AppCompatActivity {
         }
         applyPublisherSourceUiState();
         applyGb28181SourceUiState();
+        applyPlayerSourceUiState();
         if (!previewDisplayModeSpinners.isEmpty()
                 && previewDisplayModeSpinners.get(0) != null) {
             previewDisplayModeSpinners.get(0).post(this::applyPreviewDisplayMode);
@@ -1956,17 +2079,10 @@ public final class MainActivity extends AppCompatActivity {
                 "streamcore_demo_preview.mp4");
         demoAudioFile = createDemoAudioFile();
         demoStillImageFile = createDemoStillImageFile();
-        final String demoPublicPem = readAssetText("streamcore_demo_public.pem");
-
         productInfo = StreamCoreSdk.getProductInfo();
         runtimeConfig = runtime.getDefaultConfig()
                 .buildUpon()
-                .expectedProduct("streamcore_demo")
                 .licensePath(demoLicenseFile.getAbsolutePath())
-                .publicKeyPem(demoPublicPem)
-                .packageId(getPackageName())
-                .appId(getPackageName())
-                .companyId("hbr")
                 .build();
         configureStatus = runtime.configure(runtimeConfig);
         logConfigureStatus = runtime.configureLog(
@@ -1980,8 +2096,7 @@ public final class MainActivity extends AppCompatActivity {
         Log.i(LOG_TAG, "runtime.configure status="
                 + configureStatus.statusName
                 + " result=" + configureStatus.resultCode
-                + " packageId=" + runtimeConfig.packageId
-                + " appId=" + runtimeConfig.appId);
+                + " packageIdentity=runtime_collected");
         Log.i(LOG_TAG, "license configured="
                 + licenseInfo.configured
                 + " loaded=" + licenseInfo.licenseLoaded
@@ -2651,10 +2766,12 @@ public final class MainActivity extends AppCompatActivity {
         renderInfoText();
     }
 
+    /** 异步创建并启动 GB28181 设备会话；UI 线程只接收最终成功会话或固定失败状态。 */
     private void startGb28181Device() {
         if (!demoInitialized
                 || !initializationFailureMessage.isEmpty()
                 || gb28181StartInProgress
+                || gb28181StopInProgress
                 || activeGb28181Session != null) {
             renderInfoText();
             return;
@@ -2730,6 +2847,7 @@ public final class MainActivity extends AppCompatActivity {
                 buildGb28181Catalog(localId, sourceLabel);
 
         gb28181StartInProgress = true;
+        gb28181StartSucceeded = false;
         gb28181StatusText = "Starting GB28181 device runtime for " + sourceBinding + ".";
         renderInfoText();
 
@@ -2821,6 +2939,7 @@ public final class MainActivity extends AppCompatActivity {
             final boolean keepSessionForUi = keepSession;
             runOnUiThread(() -> {
                 gb28181StartInProgress = false;
+                gb28181StartSucceeded = keepSessionForUi;
                 if (keepSessionForUi) {
                     activeGb28181Session = sessionForUi;
                     startGb28181PollLoop(sessionForUi);
@@ -2835,9 +2954,21 @@ public final class MainActivity extends AppCompatActivity {
         worker.start();
     }
 
+    /**
+     * 异步停止 GB28181 设备会话，并记录不含地址或凭据的阶段日志。
+     *
+     * <p>UI 线程只负责停止本地预览和摘除轮询任务；协议注销、native runtime
+     * 停止与 handle 关闭均在专用工作线程串行执行，避免阻塞 Activity 主线程。</p>
+     */
     private void stopGb28181Device() {
+        if (gb28181StopInProgress) {
+            return;
+        }
+        Log.i(LOG_TAG, "gb28181.stop phase=preview_stop begin");
         final boolean stoppedPreview = stopGbSourcePreviewInternal(false);
+        Log.i(LOG_TAG, "gb28181.stop phase=preview_stop end");
         stopGb28181PollLoop();
+        Log.i(LOG_TAG, "gb28181.stop phase=poll_stop end");
         if (activeGb28181Session == null) {
             gb28181StatusText = stoppedPreview
                     ? "GB28181 is not running; source preview has been stopped."
@@ -2847,6 +2978,9 @@ public final class MainActivity extends AppCompatActivity {
         }
         final StreamCoreGB28181.DeviceSession session = activeGb28181Session;
         activeGb28181Session = null;
+        gb28181StopInProgress = true;
+        gb28181StopSucceeded = false;
+        gb28181StopFailureStatus = "gb28181_stop_in_progress";
         Thread worker = new Thread(() -> {
             final StringBuilder logBuilder = new StringBuilder();
             final StreamCoreOperationStatus[] statusForUi = new StreamCoreOperationStatus[] {
@@ -2857,10 +2991,14 @@ public final class MainActivity extends AppCompatActivity {
                             "Device session closed.")
             };
             try {
+                Log.i(LOG_TAG, "gb28181.stop phase=unregister begin");
                 final StreamCoreOperationStatus unregisterStatus =
                         session.unregisterFromPlatform();
+                Log.i(LOG_TAG, "gb28181.stop phase=unregister end");
                 statusForUi[0] = unregisterStatus;
+                Log.i(LOG_TAG, "gb28181.stop phase=runtime_stop begin");
                 session.stop();
+                Log.i(LOG_TAG, "gb28181.stop phase=runtime_stop end");
                 final StreamCoreGB28181.RuntimeInfo runtimeInfo = session.getRuntimeInfo();
                 appendStatusLine(logBuilder, "unregister", unregisterStatus);
                 logBuilder.append("stop: done\n")
@@ -2876,10 +3014,31 @@ public final class MainActivity extends AppCompatActivity {
                         .append(runtimeInfo.sentAudioPacketCount)
                         .append(", sentVideo=")
                         .append(runtimeInfo.sentVideoPacketCount);
+            } catch (RuntimeException failure) {
+                statusForUi[0] = buildStatus(
+                        StreamCoreResultCode.OPERATION_FAILED,
+                        "gb28181_stop_failed",
+                        "GB28181 stop failed.",
+                        "Inspect the runtime log for the native failure boundary.");
+                logBuilder.append("stop: failed");
             } finally {
-                session.close();
+                try {
+                    Log.i(LOG_TAG, "gb28181.stop phase=close begin");
+                    session.close();
+                    Log.i(LOG_TAG, "gb28181.stop phase=close end");
+                } catch (RuntimeException failure) {
+                    statusForUi[0] = buildStatus(
+                            StreamCoreResultCode.OPERATION_FAILED,
+                            "gb28181_close_failed",
+                            "GB28181 close failed.",
+                            "Inspect the runtime log for the native failure boundary.");
+                    logBuilder.append("\nclose: failed");
+                }
             }
             runOnUiThread(() -> {
+                gb28181StopInProgress = false;
+                gb28181StopSucceeded = statusForUi[0].isOk();
+                gb28181StopFailureStatus = statusForUi[0].statusName;
                 gb28181StatusText = stoppedPreview
                         ? logBuilder + "\nsource preview stopped."
                         : logBuilder.toString();
@@ -3443,8 +3602,35 @@ public final class MainActivity extends AppCompatActivity {
     }
 
     private void toggleOnvifPanel() {
+        if (selectedPlayerSourceKind() == StreamCorePlayer.SourceKind.WHEP) {
+            playerOnvifControls.setVisibility(View.GONE);
+            return;
+        }
         final boolean expanded = playerOnvifControls.getVisibility() != View.VISIBLE;
         playerOnvifControls.setVisibility(expanded ? View.VISIBLE : View.GONE);
+    }
+
+    /**
+     * 同步播放器协议专属控件，不根据 endpoint 文本猜测来源类型。
+     * WHEP 模式隐藏 ONVIF，避免把设备发现结果误写入 WHEP endpoint。
+     */
+    private void applyPlayerSourceUiState() {
+        final boolean whep = selectedPlayerSourceKind() == StreamCorePlayer.SourceKind.WHEP;
+        playerWhepControls.setVisibility(whep ? View.VISIBLE : View.GONE);
+        toggleOnvifPanelButton.setVisibility(whep ? View.GONE : View.VISIBLE);
+        if (whep) {
+            playerOnvifControls.setVisibility(View.GONE);
+            showOnvifStatus("");
+        }
+        renderInfoText();
+    }
+
+    /** 返回用户显式选择的播放器来源类型，不依据 endpoint 文本推断协议。 */
+    private StreamCorePlayer.SourceKind selectedPlayerSourceKind() {
+        return playerSourceKindSpinner != null
+                && playerSourceKindSpinner.getSelectedItemPosition() == 1
+                ? StreamCorePlayer.SourceKind.WHEP
+                : StreamCorePlayer.SourceKind.URL;
     }
 
     private void applySelectedOnvifStream() {
@@ -3605,18 +3791,39 @@ public final class MainActivity extends AppCompatActivity {
         final boolean preferSoftwareBackend =
                 selectedPlayerPrefersSoftwareBackend();
         final String playerSourceUrl = readPlayerSourceUrl();
+        final StreamCorePlayer.SourceKind playerSourceKind = selectedPlayerSourceKind();
+        final String whepBearerToken = playerWhepBearerTokenInput.getText().toString();
+        final String whepLocalBindIp =
+                playerWhepLocalBindIpInput.getText().toString().trim();
+        final boolean whepAllowInsecureHttp =
+                playerWhepAllowInsecureHttpCheckBox.isChecked();
         final int previewWidth = Math.max(0, playerPreviewSurface.getWidth());
         final int previewHeight = Math.max(0, playerPreviewSurface.getHeight());
         renderInfoText();
 
         Thread worker = new Thread(() -> {
             final StreamCorePlayer.Session session = new StreamCorePlayer.Session();
-            final StreamCoreOperationStatus configStatus = session.setConfig(
+            final StreamCoreOperationStatus whepOptionsStatus =
+                    playerSourceKind == StreamCorePlayer.SourceKind.WHEP
+                            ? session.setWhepOptions(
+                            StreamCorePlayer.WhepOptions.newBuilder()
+                                    .bearerToken(whepBearerToken)
+                                    .localBindIp(whepLocalBindIp)
+                                    .allowInsecureHttp(whepAllowInsecureHttp)
+                                    .build())
+                            : null;
+            final StreamCoreOperationStatus configStatus =
+                    whepOptionsStatus == null || whepOptionsStatus.isOk()
+                    ? session.setConfig(
                     StreamCorePlayer.Config.newBuilder()
-                            .sessionName("android_demo_player_preview")
-                            .sourceKind(StreamCorePlayer.SourceKind.URL)
+                            .sessionName(playerSourceKind == StreamCorePlayer.SourceKind.WHEP
+                                    ? "android_demo_whep_player"
+                                    : "android_demo_url_player")
+                            .sourceKind(playerSourceKind)
                             .sourceUrl(playerSourceUrl)
-                            .allowReconnect(!playerSourceUrl.startsWith("file://"))
+                            .allowReconnect(
+                                    playerSourceKind != StreamCorePlayer.SourceKind.WHEP
+                                            && !playerSourceUrl.startsWith("file://"))
                             .renderMode(StreamCorePlayer.RenderMode.NATIVE_WINDOW)
                             .renderTarget(previewTarget)
                             .videoPresentPath(presentPath)
@@ -3631,10 +3838,26 @@ public final class MainActivity extends AppCompatActivity {
                                     audioQueueLimit,
                                     videoQueueLimit)
                             .enableAudio(true)
-                            .build());
+                            .build())
+                    : whepOptionsStatus;
+            if (!configStatus.isOk()) {
+                final StreamCorePlayer.RuntimeInfo runtimeAfterFailure =
+                        session.getRuntimeInfo();
+                session.stop();
+                session.close();
+                runOnUiThread(() -> {
+                    playerPreviewStartInProgress = false;
+                    playerPreviewScenario = PlayerPreviewScenarioResult.failed(
+                            null,
+                            configStatus,
+                            runtimeAfterFailure);
+                    recordDemoStatus("player.preview.start", configStatus);
+                    renderInfoText();
+                });
+                return;
+            }
             final StreamCorePlayer.Preflight preflight = session.preflight();
-            final StreamCoreOperationStatus startStatus =
-                    configStatus.isOk() ? session.start() : configStatus;
+            final StreamCoreOperationStatus startStatus = session.start();
             final StreamCorePlayer.RuntimeInfo runtimeAfterStart = session.getRuntimeInfo();
             final boolean keepSession = startStatus.resultCode == StreamCoreResultCode.OK;
             if (!keepSession) {
@@ -4516,6 +4739,7 @@ public final class MainActivity extends AppCompatActivity {
         startGb28181Button.setEnabled(
                 initialized
                         && !gb28181StartInProgress
+                        && !gb28181StopInProgress
                         && (activeGb28181Session != null
                         || previewActive
                         || (!gb28181PermissionRequestInProgress
@@ -4527,6 +4751,7 @@ public final class MainActivity extends AppCompatActivity {
         stopGb28181Button.setEnabled(
                 initialized
                         && !gb28181StartInProgress
+                        && !gb28181StopInProgress
                         && (activeGb28181Session != null || previewActive));
     }
 
@@ -4556,6 +4781,15 @@ public final class MainActivity extends AppCompatActivity {
                 initialized
                         && !playerPreviewStartInProgress
                         && activePlayerPreviewSession != null);
+        final boolean playerCreationControlsEnabled =
+                initialized
+                        && !playerPreviewStartInProgress
+                        && activePlayerPreviewSession == null;
+        playerSourceKindSpinner.setEnabled(playerCreationControlsEnabled);
+        playerSourceUrlInput.setEnabled(playerCreationControlsEnabled);
+        playerWhepBearerTokenInput.setEnabled(playerCreationControlsEnabled);
+        playerWhepLocalBindIpInput.setEnabled(playerCreationControlsEnabled);
+        playerWhepAllowInsecureHttpCheckBox.setEnabled(playerCreationControlsEnabled);
         searchOnvifButton.setEnabled(
                 initialized && !onvifSearchInProgress && !onvifResolveInProgress);
         final StreamCoreOnvif.Device selectedOnvifDevice = selectedOnvifDevice();
@@ -4715,6 +4949,33 @@ public final class MainActivity extends AppCompatActivity {
 
     private String readPlayerSourceUrl() {
         return readTextInput(playerSourceUrlInput, buildPreviewMediaUrl());
+    }
+
+    /**
+     * 返回可安全展示的播放器来源。WHEP endpoint 只展示 scheme/host/port/path，
+     * 始终移除 userinfo、query 和 fragment，Bearer 与本地绑定地址从不进入摘要。
+     */
+    private String playerSourceDisplayText() {
+        final String source = readPlayerSourceUrl();
+        if (selectedPlayerSourceKind() != StreamCorePlayer.SourceKind.WHEP) {
+            return source;
+        }
+        try {
+            final URI uri = new URI(source);
+            if (uri.getScheme() == null || uri.getHost() == null) {
+                return "<invalid WHEP endpoint>";
+            }
+            return new URI(
+                    uri.getScheme(),
+                    null,
+                    uri.getHost(),
+                    uri.getPort(),
+                    uri.getRawPath(),
+                    null,
+                    null).toASCIIString();
+        } catch (URISyntaxException failure) {
+            return "<invalid WHEP endpoint>";
+        }
     }
 
     private String buildPreviewMediaUrl() {
@@ -5173,7 +5434,18 @@ public final class MainActivity extends AppCompatActivity {
 
     private String buildPlayerSummaryText() {
         final StringBuilder builder = new StringBuilder();
-        builder.append("State: ")
+        builder.append("Source: ")
+                .append(selectedPlayerSourceKind() == StreamCorePlayer.SourceKind.WHEP
+                        ? "WHEP"
+                        : "Media URL")
+                .append(" | ")
+                .append(compactText(playerSourceDisplayText(), 48));
+        if (selectedPlayerSourceKind() == StreamCorePlayer.SourceKind.WHEP) {
+            builder.append(" | token configured=")
+                    .append(!playerWhepBearerTokenInput.getText().toString().isEmpty());
+        }
+        builder.append('\n')
+                .append("State: ")
                 .append(playerPreviewScenario.lifecycleState)
                 .append(" | ")
                 .append(compactText(playerPreviewScenario.summary, 60))
@@ -5328,8 +5600,13 @@ public final class MainActivity extends AppCompatActivity {
 
     private void appendPlayerParameterSection(StringBuilder builder) {
         builder.append("Player parameters:\n")
-                .append("- source url: ")
-                .append(readPlayerSourceUrl())
+                .append("- source kind: ")
+                .append(selectedPlayerSourceKind() == StreamCorePlayer.SourceKind.WHEP
+                        ? "WHEP"
+                        : "Media URL")
+                .append('\n')
+                .append("- source: ")
+                .append(playerSourceDisplayText())
                 .append('\n')
                 .append("- decode mode: ")
                 .append(playerDecodeModeSpinner.getSelectedItem())
@@ -5743,17 +6020,10 @@ public final class MainActivity extends AppCompatActivity {
             StreamCoreOperationStatus configureStatus,
             StreamCoreRuntimeLicenseInfo licenseInfo) {
         builder.append("Runtime:\n")
-                .append("- expectedProduct: ")
-                .append(runtimeConfig.expectedProduct)
+                .append("- license file configured: ")
+                .append(!runtimeConfig.licensePath.isEmpty())
                 .append('\n')
-                .append("- packageId: ")
-                .append(runtimeConfig.packageId)
-                .append('\n')
-                .append("- appId: ")
-                .append(runtimeConfig.appId)
-                .append('\n')
-                .append("- companyId: ")
-                .append(runtimeConfig.companyId)
+                .append("- application identity: runtime collected")
                 .append('\n')
                 .append("- configure result: ")
                 .append(configureStatus.resultCode)

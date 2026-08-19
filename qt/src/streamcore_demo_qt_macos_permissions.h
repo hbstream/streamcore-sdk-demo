@@ -10,6 +10,16 @@
 
 #include <stddef.h>
 
+#include <streamcore/streamcore_sdk.h>
+
+// Configures the process-wide runtime through the public Apple wrapper so the
+// SDK collects the Bundle ID from the current .app. The Qt snapshot must reuse
+// that runtime instead of overwriting it with identity-free native C config.
+streamcore_result_t StreamCoreDemoQtConfigureMacRuntime(
+    const char* configuredLicensePath,
+    char* message,
+    size_t messageCapacity);
+
 // Requests macOS Screen Recording, Camera, and/or Microphone permission for the
 // current app bundle.
 bool StreamCoreDemoQtRequestMacCapturePermissions(

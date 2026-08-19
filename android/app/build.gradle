@@ -13,6 +13,7 @@ configurations.all {
 android {
     namespace 'com.hbr.streamcoredemo'
     compileSdk 34
+    ndkVersion '29.0.14206865'
 
     def streamcoreDemoApplicationId =
             providers.gradleProperty('streamcoreDemoApplicationId')
@@ -23,8 +24,8 @@ android {
         applicationId streamcoreDemoApplicationId
         minSdk 26
         targetSdk 34
-        versionCode 10500
-        versionName '1.5.1'
+        versionCode 10602
+        versionName '1.6.2'
     }
 
     buildTypes {

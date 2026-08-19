@@ -15,6 +15,7 @@ int main(void)
 
     error_text[0] = '\0';
     const streamcore_result_t snapshot_result = streamcore_demo_collect_snapshot(
+            1,
             &snapshot,
             error_text,
             sizeof(error_text));

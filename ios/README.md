@@ -4,6 +4,10 @@ English: [README.en.md](README.en.md)
 
 本目录提供 iPhone / iPad Objective-C 示例，覆盖播放、采集、推流、授权状态与常用显示设置。示例只调用 `StreamCoreSDK.h` 公开接口和 Apple 系统框架。
 
+## WHEP 播放（1.6.0）
+
+Player 页通过分段控件显式选择媒体 URL 或 WHEP。WHEP 模式提供遮蔽 Bearer Token、可选 numeric 本地绑定 IP 与隔离测试 HTTP 开关，默认仍使用 HTTPS，并要求 Professional `p2_whep_player`。`configureWhepOptions:` 失败时不会继续 preflight/start；界面展示 endpoint 时会移除 userinfo、query 和 fragment。custom CA、ICE/TURN、relay-only 等高级参数可通过 `HBRStreamCorePlayerWhepOptions` 正式接口设置。
+
 ## 准备 SDK
 
 从 [HBRun 下载中心](https://hbrun.com/zh-CN/downloads/) 获取 iOS SDK，将 XCFramework 放入：
@@ -27,7 +31,6 @@ open build-ios/streamcore_demo_ios.xcodeproj
 
 ```text
 Resources/streamcore_demo.lic
-Resources/streamcore_demo_public.pem
 StreamCoreDemoLaunchScreen.storyboard
 ```
 
@@ -35,7 +38,13 @@ StreamCoreDemoLaunchScreen.storyboard
 
 ## Demo 授权
 
-Demo 授权仅绑定默认示例 Bundle ID，用于体验 Standard 与 Professional 能力，并显示 `hbrun.com` 水印。更改 Bundle ID 后不能继续使用该授权。
+`Resources/streamcore_demo.lic` 是随示例提供的 `SC-LIC-ENC-v1` 加密 Demo 授权。
+App 从 `NSBundle.mainBundle` 取得只读资源路径，并通过公开 runtime 配置提交；用户
+不需要填写注册码。该授权只绑定默认 Demo Bundle ID，不要求用户提供正式应用的
+Team ID，用于体验 Standard 与 Professional 能力并显示 `hbrun.com` 水印。
+
+更改 Bundle ID 后不能继续使用。正式集成需要申请“Bundle ID + Team ID”商业授权，
+并使用正式 XCFramework；Demo 授权与正式授权不能互换。
 
 ## 依赖
 

@@ -91,6 +91,7 @@ static uint32_t HBRCrc32(NSData* data)
 @property(nonatomic, strong) NSArray<UIButton*>* tabButtons;
 @property(nonatomic, strong) UIButton* languageButton;
 @property(nonatomic, strong) UISegmentedControl* displayModeControl;
+@property(nonatomic, strong) UISegmentedControl* playerSourceControl;
 @property(nonatomic, strong) UISegmentedControl* publisherDisplayModeControl;
 @property(nonatomic, strong) UISegmentedControl* captureSourceControl;
 @property(nonatomic, strong) UISegmentedControl* publisherInputControl;
@@ -104,6 +105,10 @@ static uint32_t HBRCrc32(NSData* data)
 @property(nonatomic, strong) UIView* publisherPreviewHostView;
 @property(nonatomic, strong) UIView* gbPreviewHostView;
 @property(nonatomic, strong) UITextField* playerURLEdit;
+@property(nonatomic, strong) UIStackView* playerWhepOptionsStack;
+@property(nonatomic, strong) UITextField* playerWhepBearerEdit;
+@property(nonatomic, strong) UITextField* playerWhepLocalBindEdit;
+@property(nonatomic, strong) UISwitch* playerWhepAllowHTTPControl;
 @property(nonatomic, strong) UITextField* publisherURLEdit;
 @property(nonatomic, strong) UITextField* gbLocalIdEdit;
 @property(nonatomic, strong) UITextField* gbLocalDomainEdit;
@@ -178,6 +183,14 @@ static uint32_t HBRCrc32(NSData* data)
 - (void)syncGB28181SourceControls;
 - (void)updatePublisherPreviewPresentation;
 - (void)refreshPrimaryActionButtons;
+// 处理用户显式切换媒体 URL / WHEP，并释放旧会话中的创建期配置。
+- (void)playerSourceChanged:(UISegmentedControl*)sender;
+// 仅在 WHEP 模式展示协议专属选项。
+- (void)updatePlayerSourceUI;
+// 返回当前是否显式选择 WHEP，不根据 endpoint 文本猜测协议。
+- (BOOL)isPlayerWhepSelected;
+// 返回移除 userinfo、query 与 fragment 后的安全展示地址。
+- (NSString*)playerDisplaySource;
 - (void)refreshPreviewOverlays;
 @end
 
@@ -809,8 +822,38 @@ static uint32_t HBRCrc32(NSData* data)
 
 - (void)addPlayerOperationSection
 {
+    self.playerSourceControl = [[UISegmentedControl alloc] initWithItems:@[
+        [self uiTextEnglish:@"Media URL" chinese:@"媒体 URL"],
+        @"WHEP"
+    ]];
+    self.playerSourceControl.selectedSegmentIndex = 0;
+    [self.playerSourceControl addTarget:self
+                                 action:@selector(playerSourceChanged:)
+                       forControlEvents:UIControlEventValueChanged];
     self.playerURLEdit = [self addTextFieldWithText:@"rtmp://demo.example/live/sample"
-                                        placeholder:[self uiTextEnglish:@"Player URL" chinese:@"播放地址"]];
+                                        placeholder:[self uiTextEnglish:@"Media URL or WHEP endpoint"
+                                                                     chinese:@"媒体 URL 或 WHEP endpoint"]];
+    self.playerWhepBearerEdit = [self addTextFieldWithText:@""
+                                                placeholder:[self uiTextEnglish:@"Optional Bearer token"
+                                                                             chinese:@"可选 Bearer Token"]];
+    self.playerWhepBearerEdit.secureTextEntry = YES;
+    self.playerWhepLocalBindEdit = [self addTextFieldWithText:@""
+                                                   placeholder:[self uiTextEnglish:@"Optional numeric local bind IP"
+                                                                                chinese:@"可选 numeric 本地绑定 IP"]];
+    self.playerWhepAllowHTTPControl = [[UISwitch alloc] initWithFrame:CGRectZero];
+    self.playerWhepOptionsStack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    self.playerWhepOptionsStack.axis = UILayoutConstraintAxisVertical;
+    self.playerWhepOptionsStack.spacing = 6.0;
+    [self addLabeledControl:self.playerWhepBearerEdit
+                      label:[self uiTextEnglish:@"Bearer token" chinese:@"Bearer Token"]
+                    toStack:self.playerWhepOptionsStack];
+    [self addLabeledControl:self.playerWhepLocalBindEdit
+                      label:[self uiTextEnglish:@"Local numeric bind" chinese:@"本地 numeric 绑定"]
+                    toStack:self.playerWhepOptionsStack];
+    [self addLabeledControl:self.playerWhepAllowHTTPControl
+                      label:[self uiTextEnglish:@"Allow HTTP for isolated tests"
+                                           chinese:@"仅隔离测试允许 HTTP"]
+                    toStack:self.playerWhepOptionsStack];
     self.playerLabel = [[UILabel alloc] initWithFrame:(CGRect){0, 0, 0, 0}];
     self.playerLabel.numberOfLines = 0;
     self.playerLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
@@ -836,14 +879,42 @@ static uint32_t HBRCrc32(NSData* data)
                                 action:@selector(togglePlayerPrimaryAction)];
     [actionRow addArrangedSubview:self.playerStartStopButton];
     [self.stackView addArrangedSubview:self.playerPreviewHostView];
+    [self addLabeledControl:self.playerSourceControl
+                      label:[self uiTextEnglish:@"Source type" chinese:@"来源类型"]
+                    toStack:self.stackView];
     [self.stackView addArrangedSubview:self.playerURLEdit];
+    [self.stackView addArrangedSubview:self.playerWhepOptionsStack];
     [self.stackView addArrangedSubview:actionRow];
     [self addLabeledControl:self.displayModeControl
                       label:[self uiTextEnglish:@"Display Mode" chinese:@"显示模式"]
                     toStack:self.stackView];
     [self applyDisplayModeToPreviewHost];
+    [self updatePlayerSourceUI];
     [self refreshPrimaryActionButtons];
     [self refreshPreviewOverlays];
+}
+
+- (void)playerSourceChanged:(UISegmentedControl*)sender
+{
+    (void)sender;
+    // 来源类型和 WHEP 参数属于创建期合同；切换时释放旧会话及其深拷贝凭据。
+    if (self.playerSession != nil)
+    {
+        [self.playerSession stop];
+        self.playerSession = nil;
+    }
+    [self updatePlayerSourceUI];
+    [self reloadDemoSnapshot];
+}
+
+- (void)updatePlayerSourceUI
+{
+    self.playerWhepOptionsStack.hidden = ![self isPlayerWhepSelected];
+}
+
+- (BOOL)isPlayerWhepSelected
+{
+    return self.playerSourceControl.selectedSegmentIndex == 1;
 }
 - (UISegmentedControl*)newCaptureSourceControl
 {
@@ -1252,15 +1323,9 @@ static uint32_t HBRCrc32(NSData* data)
 
     HBRStreamCoreRuntime* runtime = [HBRStreamCoreSDK runtime];
     HBRStreamCoreRuntimeConfig* runtimeConfig = [runtime defaultConfig];
-    NSString* bundleIdentifier = [NSBundle mainBundle].bundleIdentifier;
-    if (bundleIdentifier.length == 0) {
-        bundleIdentifier = @"com.hbr.streamcoredemo";
-    }
-    runtimeConfig.expectedProduct = @"streamcore_demo";
-    runtimeConfig.applicationIdentifier = bundleIdentifier;
-    runtimeConfig.packageIdentifier = bundleIdentifier;
+    // 1.6.0 起产品标识、验签材料和 Bundle 身份由正式 framework 自动提供并采集；
+    // Demo 只提交客户可配置的授权文件入口，避免重建已从公开合同移除的兼容字段。
     runtimeConfig.licensePath = [self bundledPathForResource:@"streamcore_demo" type:@"lic"];
-    runtimeConfig.publicKeyPEMPath = [self bundledPathForResource:@"streamcore_demo_public" type:@"pem"];
     HBRStreamCoreOperationStatus* configureStatus = [runtime configure:runtimeConfig];
     HBRStreamCoreOperationStatus* logStatus =
         [runtime configureLogWithDirectory:@""
@@ -1276,11 +1341,9 @@ static uint32_t HBRCrc32(NSData* data)
                       status:logStatus.statusName
                      summary:logInfo.stateSummary];
     HBRStreamCoreRuntimeLicenseInfo* licenseInfo = [runtime licenseInfo];
-    NSLog(@"StreamCoreDemo runtime.configure status=%@ result=%ld bundleId=%@ packageId=%@",
+    NSLog(@"StreamCoreDemo runtime.configure status=%@ result=%ld platformIdentity=auto",
           configureStatus.statusName,
-          (long)configureStatus.resultCode,
-          bundleIdentifier,
-          runtimeConfig.packageIdentifier);
+          (long)configureStatus.resultCode);
     NSLog(@"StreamCoreDemo license configured=%d loaded=%d valid=%d status=%@ summary=%@",
           licenseInfo.configured,
           licenseInfo.licenseLoaded,
@@ -1336,9 +1399,10 @@ static uint32_t HBRCrc32(NSData* data)
     HBRStreamCorePlayerRuntimeInfo* runtimeInfo =
         self.playerSession != nil ? [self.playerSession runtimeInfo] : nil;
     return [NSString stringWithFormat:
-        @"%@: %@\n%@: %@\n%@: %@",
-        [self uiTextEnglish:@"URL" chinese:@"URL"],
-        [self compactText:[self playerURLText] maxLength:56],
+        @"%@: %@ · %@\n%@: %@\n%@: %@",
+        [self uiTextEnglish:@"Source" chinese:@"来源"],
+        [self isPlayerWhepSelected] ? @"WHEP" : [self uiTextEnglish:@"Media URL" chinese:@"媒体 URL"],
+        [self compactText:[self playerDisplaySource] maxLength:56],
         [self uiTextEnglish:@"Display" chinese:@"显示"],
         [self selectedDisplayModeText],
         [self uiTextEnglish:@"State" chinese:@"状态"],
@@ -1465,6 +1529,25 @@ static uint32_t HBRCrc32(NSData* data)
         self.playerURLEdit.text :
         @"rtmp://demo.example/live/sample";
     return url;
+}
+
+- (NSString*)playerDisplaySource
+{
+    NSString* source = [self playerURLText];
+    if (![self isPlayerWhepSelected])
+    {
+        return source;
+    }
+    NSURLComponents* components = [NSURLComponents componentsWithString:source];
+    if (components.scheme.length == 0 || components.host.length == 0)
+    {
+        return @"<invalid WHEP endpoint>";
+    }
+    components.user = nil;
+    components.password = nil;
+    components.query = nil;
+    components.fragment = nil;
+    return components.string.length > 0 ? components.string : @"<invalid WHEP endpoint>";
 }
 
 - (NSString*)publisherURLText
@@ -1639,9 +1722,27 @@ static uint32_t HBRCrc32(NSData* data)
     {
         self.playerSession = [[HBRStreamCorePlayerSession alloc] init];
     }
+    if ([self isPlayerWhepSelected])
+    {
+        HBRStreamCorePlayerWhepOptions* options =
+            [HBRStreamCorePlayerWhepOptions defaultOptions];
+        options.bearerToken = self.playerWhepBearerEdit.text ?: @"";
+        options.localBindIPAddress = self.playerWhepLocalBindEdit.text ?: @"";
+        options.allowInsecureHTTP = self.playerWhepAllowHTTPControl.isOn;
+        HBRStreamCoreOperationStatus* optionsStatus =
+            [self.playerSession configureWhepOptions:options];
+        if (optionsStatus.resultCode != 0)
+        {
+            return optionsStatus;
+        }
+    }
     HBRStreamCorePlayerConfig* config = [self.playerSession defaultConfig];
-    config.sessionName = @"ios_demo_player";
-    config.sourceKind = HBRStreamCorePlayerSourceKindURL;
+    config.sessionName = [self isPlayerWhepSelected] ?
+        @"ios_demo_whep_player" :
+        @"ios_demo_url_player";
+    config.sourceKind = [self isPlayerWhepSelected] ?
+        HBRStreamCorePlayerSourceKindWhep :
+        HBRStreamCorePlayerSourceKindURL;
     config.sourceURL = [self playerURLText];
     config.renderMode = HBRStreamCorePlayerRenderModeNativeWindow;
     config.nativeRenderView = self.playerPreviewHostView;
@@ -1768,11 +1869,25 @@ static uint32_t HBRCrc32(NSData* data)
 - (void)preflightPlayer
 {
     HBRStreamCoreOperationStatus* configureStatus = [self configurePlayerSession];
+    if (configureStatus.resultCode != 0)
+    {
+        self.playerLabel.text = [NSString stringWithFormat:
+            @"%@: %@\nconfigure: %@",
+            [self uiTextEnglish:@"Source" chinese:@"来源"],
+            [self playerDisplaySource],
+            [self statusText:configureStatus]];
+        [self setOperationAction:@"player.preflight"
+                            code:[NSString stringWithFormat:@"%ld", (long)configureStatus.resultCode]
+                          status:configureStatus.statusName
+                         summary:configureStatus.summary];
+        return;
+    }
     HBRStreamCorePlayerPreflight* preflight = [self.playerSession preflight];
     HBRStreamCorePlayerRuntimeInfo* runtimeInfo = [self.playerSession runtimeInfo];
     self.playerLabel.text = [NSString stringWithFormat:
-        @"URL: %@\nconfigure: %@\npreflight: ready=%d state=%ld\n%@\nruntime: %@",
-        [self playerURLText],
+        @"Source: %@ · %@\nconfigure: %@\npreflight: ready=%d state=%ld\n%@\nruntime: %@",
+        [self isPlayerWhepSelected] ? @"WHEP" : @"URL",
+        [self playerDisplaySource],
         [self statusText:configureStatus],
         preflight.readyToStart,
         (long)preflight.sessionState,
@@ -1787,6 +1902,19 @@ static uint32_t HBRCrc32(NSData* data)
 - (void)startPlayer
 {
     HBRStreamCoreOperationStatus* configureStatus = [self configurePlayerSession];
+    if (configureStatus.resultCode != 0)
+    {
+        self.playerLabel.text = [NSString stringWithFormat:
+            @"%@: %@\nconfigure: %@",
+            [self uiTextEnglish:@"Source" chinese:@"来源"],
+            [self playerDisplaySource],
+            [self statusText:configureStatus]];
+        [self setOperationAction:@"player.start"
+                            code:[NSString stringWithFormat:@"%ld", (long)configureStatus.resultCode]
+                          status:configureStatus.statusName
+                         summary:configureStatus.summary];
+        return;
+    }
     HBRStreamCorePlayerPreflight* preflight = [self.playerSession preflight];
     HBRStreamCoreOperationStatus* startStatus =
         preflight.readyToStart ? [self.playerSession start] : preflight.status;
@@ -1797,9 +1925,10 @@ static uint32_t HBRCrc32(NSData* data)
         playerOutcome = [self uiTextEnglish:@"Playback failed to start." chinese:@"播放启动失败。"];
     }
     self.playerLabel.text = [NSString stringWithFormat:
-        @"%@\nURL: %@\nconfigure: %@\nstart: %@\nruntime: %@",
+        @"%@\nSource: %@ · %@\nconfigure: %@\nstart: %@\nruntime: %@",
         playerOutcome,
-        [self playerURLText],
+        [self isPlayerWhepSelected] ? @"WHEP" : @"URL",
+        [self playerDisplaySource],
         [self statusText:configureStatus],
         [self statusText:startStatus],
         runtimeInfo.stateSummary];
@@ -1813,6 +1942,8 @@ static uint32_t HBRCrc32(NSData* data)
 {
     [self.playerSession stop];
     HBRStreamCorePlayerRuntimeInfo* runtimeInfo = [self.playerSession runtimeInfo];
+    // 释放 session，确保 WHEP Bearer 等创建期参数不跨下一次播放继续保留。
+    self.playerSession = nil;
     self.playerLabel.text = [NSString stringWithFormat:@"%@\nruntime: %@",
         [self uiTextEnglish:@"Playback stopped." chinese:@"播放已停止。"],
         runtimeInfo != nil ? runtimeInfo.stateSummary : [self uiTextEnglish:@"No active session." chinese:@"没有活动会话。"]];

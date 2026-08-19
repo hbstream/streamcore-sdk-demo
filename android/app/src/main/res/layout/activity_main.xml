@@ -142,6 +142,19 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:text="@string/player_source_kind_label"
+                    android:textSize="12sp" />
+
+                <Spinner
+                    android:id="@+id/player_source_kind_spinner"
+                    android:layout_width="match_parent"
+                    android:layout_height="42dp"
+                    android:layout_marginTop="4dp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
                     android:text="@string/player_source_url_label"
                     android:textSize="12sp" />
 
@@ -156,6 +169,44 @@
                     android:singleLine="true"
                     android:text="@string/default_player_source_url"
                     android:textSize="13sp" />
+
+                <LinearLayout
+                    android:id="@+id/player_whep_controls"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <EditText
+                        android:id="@+id/player_whep_bearer_token_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:hint="@string/player_whep_bearer_token_hint"
+                        android:importantForAutofill="no"
+                        android:inputType="textPassword"
+                        android:singleLine="true"
+                        android:textSize="13sp" />
+
+                    <EditText
+                        android:id="@+id/player_whep_local_bind_ip_input"
+                        android:layout_width="match_parent"
+                        android:layout_height="40dp"
+                        android:layout_marginTop="4dp"
+                        android:hint="@string/player_whep_local_bind_ip_hint"
+                        android:importantForAutofill="no"
+                        android:inputType="text"
+                        android:singleLine="true"
+                        android:textSize="13sp" />
+
+                    <CheckBox
+                        android:id="@+id/player_whep_allow_insecure_http_check"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="@string/player_whep_allow_insecure_http"
+                        android:textSize="12sp" />
+                </LinearLayout>
 
                 <Button
                     android:id="@+id/toggle_onvif_panel_button"
