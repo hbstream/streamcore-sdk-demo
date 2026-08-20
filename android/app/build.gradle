@@ -35,16 +35,16 @@ def hasDemoReleaseSigning = demoSigningPropertyNames.every { name ->
     value != null && !value.isEmpty()
 }
 
-def demoSourceLicense = [
-        rootProject.file('../docs/public_repo/LICENSE'),
-        rootProject.file('../LICENSE')
-].find { it.isFile() }
 def androidDemoNotice = [
         rootProject.file('../docs/package/THIRD-PARTY-NOTICES-android.md'),
         rootProject.file('../docs/THIRD-PARTY-NOTICES-android.md')
 ].find { it.isFile() }
-if (demoSourceLicense == null || androidDemoNotice == null) {
-    throw new GradleException('StreamCore Demo public license inputs are missing.')
+def thirdPartyApacheLicense = [
+        rootProject.file('../docs/package/licenses/apache-2.0/LICENSE'),
+        rootProject.file('../docs/licenses/apache-2.0/LICENSE')
+].find { it.isFile() }
+if (thirdPartyApacheLicense == null || androidDemoNotice == null) {
+    throw new GradleException('StreamCore Demo third-party notice inputs are missing.')
 }
 
 def generatedLicenseRoot = layout.buildDirectory.dir('generated/streamcore-demo-licenses')
@@ -66,10 +66,7 @@ def prepareStreamCoreDemoLicenses = tasks.register('prepareStreamCoreDemoLicense
         into 'licenses'
         rename { 'THIRD-PARTY-NOTICES-DEMO.md' }
     }
-    from(demoSourceLicense) {
-        into 'licenses/streamcore-demo'
-    }
-    from(demoSourceLicense) {
+    from(thirdPartyApacheLicense) {
         into 'licenses/apache-2.0'
     }
 }
@@ -107,7 +104,7 @@ android {
         release {
             // 公共 APK 必须使用 non-debuggable Release 变体。签名材料只允许通过本机
             // Gradle property 或被忽略的本机 signing.properties 显式传入，禁止在
-            // 开放源码工程、Git 历史或生成包中保存密码/密钥。
+            // 公开 Demo 源码、Git 历史或生成包中保存密码/密钥。
             debuggable false
             minifyEnabled false
             if (hasDemoReleaseSigning) {

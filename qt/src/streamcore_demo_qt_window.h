@@ -1,7 +1,6 @@
 /*******************************************************************************
  * streamcore_demo_qt_window.h
- * Copyright (c) 2026 HBRun.
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2026 HBRun. All rights reserved.
  *
  * Qt Widgets main window declaration for the StreamCore SDK demo.
  ******************************************************************************/

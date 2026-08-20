@@ -29,10 +29,6 @@ Runnable demos, SDK packages, and codec add-ons are available from the official 
 
 Each platform README lists its build requirements and SDK package location. SDK binaries and production license files are distributed separately from this public source repository.
 
-### Source License
-
-The first-party Demo source in this repository is licensed under the [Apache License 2.0](LICENSE). StreamCore SDK binaries, Demo license files, trademarks, and third-party components remain subject to their own terms and are not relicensed by this repository.
-
 ### Demo License
 
 Runnable demo packages include a license bound to the matching demo process or app. It enables Standard and Professional evaluation features with an `hbrun.com` watermark. It cannot be reused by another process, package, or application and is not a production license.
@@ -60,10 +56,6 @@ Runnable demo packages include a license bound to the matching demo process or a
 - [演示程序 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 
 各平台目录的 README 提供构建要求和 SDK 放置位置。公开源码仓库不包含 SDK 二进制和正式授权文件。
-
-### 源码许可证
-
-本仓库的第一方 Demo 源码采用 [Apache License 2.0](LICENSE)。StreamCore SDK 二进制、Demo 授权文件、商标和第三方组件仍分别适用其自身条款，本仓库不会改变这些内容的许可。
 
 ### Demo 授权
 

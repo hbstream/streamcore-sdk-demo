@@ -1,7 +1,6 @@
 /*******************************************************************************
  * streamcore_demo_qt_macos_permissions.mm
- * Copyright (c) 2026 HBRun.
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (c) 2026 HBRun. All rights reserved.
  *
  * macOS Camera, Microphone, and Screen Recording permission bridge for the Qt demo.
  ******************************************************************************/
