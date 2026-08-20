@@ -15,6 +15,7 @@
 #include <QSize>
 #include <QVector>
 #include <QString>
+#include <QWidget>
 
 #include <atomic>
 
@@ -27,6 +28,7 @@ class QLineEdit;
 class QListWidget;
 class QObject;
 class QPlainTextEdit;
+class QPaintEngine;
 class QPushButton;
 class QResizeEvent;
 class QShowEvent;
@@ -34,8 +36,19 @@ class QSlider;
 class QTableWidget;
 class QTimer;
 class QVBoxLayout;
-class QWidget;
 QT_END_NAMESPACE
+
+// Linux 软件渲染器直接写入该控件的原生 X11 窗口；控件不参与 Qt 绘制，
+// 避免样式或背景刷新覆盖 SDK 已提交的视频帧。其他平台仍使用 QWidget 默认绘制链。
+class NativeVideoWidget : public QWidget
+{
+public:
+    explicit NativeVideoWidget(QWidget* parent = nullptr);
+
+#if defined(Q_OS_LINUX)
+    QPaintEngine* paintEngine() const override;
+#endif
+};
 
 class StreamCoreDemoQtWindow : public QMainWindow
 {
@@ -70,7 +83,8 @@ private:
         bool resolved_stream_uri;
     };
 
-    // 构建客户可见的 Qt Widgets 页面结构。
+    // 构建客户可见的 Qt Widgets 页面结构；Linux 原生渲染宿主由 SDK 独占绘制，
+    // Qt 只负责外围布局，不能用背景重绘覆盖 X11 视频帧。
     void BuildUi();
 
     // 处理预览容器 resize，保持三种显示模式的可见几何一致。
@@ -152,16 +166,19 @@ private:
     // 按当前 render target 子窗口尺寸刷新桌面播放状态文本。
     void UpdateDesktopRenderTargetStatusFromGeometry();
 
-    // 通过 StreamCore SDK 正式 C API 刷新桌面摄像头候选项。
+    // 仅在视频 source 真正变化或页面初始化时，通过 SDK 刷新摄像头/桌面候选；
+    // URL 等普通文本编辑不得触发设备枚举。
     void RefreshPublisherCameraDevices();
 
-    // 按当前 Publisher 音频模式刷新麦克风 / 系统音频候选项。
+    // 仅在音频 source 真正变化或页面初始化时刷新麦克风/系统音频候选，
+    // 并缓存系统音频可用性；普通文本编辑只读取缓存，不能同步枚举设备。
     void RefreshPublisherAudioDevices();
 
     // 根据 source、文件路径和当前平台 source 列表刷新 Publisher 分辨率候选。
     void RefreshPublisherResolutionOptions();
 
-    // 根据当前 Publisher source 切换摄像头设备或本地文件输入控件。
+    // 根据当前 Publisher source 切换设备/文件控件的可见性与可编辑状态；
+    // 本函数必须保持纯 UI 更新，禁止隐式执行同步设备枚举。
     void UpdatePublisherSourceControls();
 
     // Refresh transport-specific controls without hiding invalid codec choices
@@ -422,6 +439,7 @@ private:
     QWidget* publisher_file_mode_row_;
     QWidget* publisher_whip_bearer_row_;
     QPlainTextEdit* publisher_runtime_log_;
+    bool publisher_system_audio_available_;
     QPushButton* publisher_start_button_;
     QLineEdit* player_url_edit_;
     QComboBox* player_source_kind_combo_;

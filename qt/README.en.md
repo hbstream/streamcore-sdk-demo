@@ -14,7 +14,7 @@ The Publisher page also includes an asynchronous Capture Processor example. When
 
 ## Prepare the SDK
 
-Download the target platform package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and extract it to `sdk/<platform_arch>/` under this directory. For example:
+Download the matching Demo SDK build package whose name starts with `streamcore_demo_sdk_1.6.2_` from the [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2). Verify it with `SHA256SUMS.txt` from the same release, then extract it to `sdk/<platform_arch>/` under this directory. Production SDK packages belong to a different trust domain and are intentionally rejected. For example:
 
 ```text
 sdk/
@@ -27,7 +27,7 @@ sdk/
     lib/libstreamcore_sdk.so
 ```
 
-The public source repository does not include SDK binaries or a production license. Runnable desktop demos are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
+The public source repository does not include SDK binaries or production licenses. It contains only encrypted Demo licenses bound to the fixed sample identities. Runnable desktop demos and the Demo SDK packages required to build this source are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
 
 ## Build
 
@@ -45,10 +45,10 @@ cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/linux_x86_64
 cmake --build build --config Release --target streamcore_demo_qt -j
 ```
 
-macOS:
+macOS (the current package targets Intel x86_64):
 
 ```bash
-cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/macos_arm64
+cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/macos_x86_64
 cmake --build build --config Release --target streamcore_demo_qt -j
 open build/streamcore_demo_qt.app
 ```

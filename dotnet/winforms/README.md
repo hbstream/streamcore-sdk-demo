@@ -12,7 +12,7 @@ The Player page explicitly selects Media URL or WHEP. WHEP mode exposes a masked
 
 ## Prepare the SDK
 
-Download the .NET SDK package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and extract it under this directory using the NuGet-style layout:
+Download `StreamCore.Demo.Sdk.1.6.2.nupkg` from the [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2), verify it with `SHA256SUMS.txt` from the same release, extract it as a ZIP archive, and place its contents under this directory using the NuGet-style layout:
 
 ```text
 packages/StreamCore.Sdk/
@@ -20,7 +20,7 @@ packages/StreamCore.Sdk/
   runtimes/win-x64/native/streamcore_sdk.dll
 ```
 
-The public source repository does not include the package or a production license. Runnable Windows demos are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
+The public source repository does not include the package or a production license. It includes only the encrypted license bound to the WinForms Demo process. A production NuGet package belongs to a different trust domain and cannot replace the Demo package above. Runnable Windows demos are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
 
 ## Build
 

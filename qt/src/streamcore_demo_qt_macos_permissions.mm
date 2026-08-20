@@ -96,17 +96,18 @@ streamcore_result_t StreamCoreDemoQtConfigureMacRuntime(
         }
         if (![licensePath isAbsolutePath])
         {
-            NSString* executablePath = [[NSBundle mainBundle] executablePath];
-            if (executablePath == nil || [executablePath length] == 0)
+            // 授权是 bundle 资源而不是可执行代码。使用 resourcePath 既符合 macOS
+            // 签名布局，也避免从当前工作目录或 Contents/MacOS 猜测文件位置。
+            NSString* resourcePath = [[NSBundle mainBundle] resourcePath];
+            if (resourcePath == nil || [resourcePath length] == 0)
             {
                 SetPermissionMessage(
                     message,
                     messageCapacity,
-                    "macOS app executable path is unavailable");
+                    "macOS app resource path is unavailable");
                 return STREAMCORE_RESULT_OPERATION_FAILED;
             }
-            licensePath = [[executablePath stringByDeletingLastPathComponent]
-                stringByAppendingPathComponent:licensePath];
+            licensePath = [resourcePath stringByAppendingPathComponent:licensePath];
         }
 
         BOOL isDirectory = NO;

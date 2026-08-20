@@ -45,3 +45,11 @@ Frameworks/
 packages/
 sdk/
 sdk-packages/
+
+# Fixed encrypted Demo licenses are public source inputs.
+!qt/license/
+!qt/license/demo/
+!qt/license/demo/*.lic
+!dotnet/license/
+!dotnet/license/demo/
+!dotnet/license/demo/*.lic

@@ -49,6 +49,7 @@
 #include <QLocale>
 #include <QMetaObject>
 #include <QMessageBox>
+#include <QPaintEngine>
 #include <QPalette>
 #include <QPixmap>
 #include <QPlainTextEdit>
@@ -75,6 +76,19 @@
 #include <QWidget>
 
 #include <vector>
+
+NativeVideoWidget::NativeVideoWidget(QWidget* parent)
+    : QWidget(parent)
+{
+}
+
+#if defined(Q_OS_LINUX)
+QPaintEngine* NativeVideoWidget::paintEngine() const
+{
+    // Linux SDK 软件渲染器独占原生 X11 窗口；禁止 Qt 为该窗口创建绘制引擎。
+    return nullptr;
+}
+#endif
 
 namespace
 {
@@ -900,6 +914,7 @@ StreamCoreDemoQtWindow::StreamCoreDemoQtWindow(QWidget* parent)
       publisher_file_mode_row_(nullptr),
       publisher_whip_bearer_row_(nullptr),
       publisher_runtime_log_(nullptr),
+      publisher_system_audio_available_(false),
       publisher_start_button_(nullptr),
       player_url_edit_(nullptr),
       player_source_kind_combo_(nullptr),
@@ -2571,18 +2586,27 @@ void StreamCoreDemoQtWindow::BuildUi()
     desktop_render_target_frame_->setStyleSheet(QString::fromUtf8(
         "QWidget#desktop_render_target_frame { background: #111827; border: 1px solid #2F3A45; }"));
     desktop_render_target_frame_->installEventFilter(this);
-    desktop_render_target_widget_ = new QWidget(desktop_render_target_frame_);
+    desktop_render_target_widget_ = new NativeVideoWidget(
+        desktop_render_target_frame_);
     desktop_render_target_widget_->setObjectName(
         QString::fromUtf8("desktop_render_target_widget"));
-    desktop_render_target_widget_->setAttribute(Qt::WA_NativeWindow);
-    desktop_render_target_widget_->setAutoFillBackground(true);
-    desktop_render_target_widget_->setStyleSheet(QString::fromUtf8(
-        "QWidget#desktop_render_target_widget { background: #111827; border: 0; }"));
-    desktop_render_target_widget_->installEventFilter(this);
-    desktop_render_target_widget_->setFocusPolicy(Qt::StrongFocus);
     QPalette render_palette = desktop_render_target_widget_->palette();
     render_palette.setColor(QPalette::Window, QColor(17, 24, 39));
     desktop_render_target_widget_->setPalette(render_palette);
+#if defined(Q_OS_LINUX)
+    // Linux software backend 直接向这个 X11 子窗口提交 XImage/XShm 帧。Qt 若继续
+    // 填充 palette 或执行 stylesheet paint，会在视频帧之后把窗口重新刷成背景色。
+    // 父容器仍负责无视频时的深色底板，原生子窗口只承担 SDK 视频呈现。
+    desktop_render_target_widget_->setAutoFillBackground(false);
+    desktop_render_target_widget_->setAttribute(Qt::WA_PaintOnScreen);
+#else
+    desktop_render_target_widget_->setAutoFillBackground(true);
+    desktop_render_target_widget_->setStyleSheet(QString::fromUtf8(
+        "QWidget#desktop_render_target_widget { background: #111827; border: 0; }"));
+#endif
+    desktop_render_target_widget_->setAttribute(Qt::WA_NativeWindow);
+    desktop_render_target_widget_->installEventFilter(this);
+    desktop_render_target_widget_->setFocusPolicy(Qt::StrongFocus);
     player_watermark_label_ =
         CreateDemoWatermarkLabel(desktop_render_target_frame_);
 
@@ -2646,6 +2670,7 @@ void StreamCoreDemoQtWindow::BuildUi()
         this,
         [this](int) {
             RefreshPublisherCameraDevices();
+            RefreshPublisherResolutionOptions();
             UpdatePublisherSourceControls();
             UpdatePublisherSourceSummary();
         });
@@ -2724,6 +2749,12 @@ void StreamCoreDemoQtWindow::BuildUi()
         [this](const QString&) {
             UpdatePublisherTargetControls(false);
             UpdatePublisherSourceControls();
+        });
+    connect(
+        publisher_url_edit_,
+        &QLineEdit::editingFinished,
+        this,
+        [this]() {
             UpdatePublisherSourceSummary();
         });
     connect(
@@ -3861,7 +3892,9 @@ void StreamCoreDemoQtWindow::BuildUi()
 
     setCentralWidget(page);
     RefreshPublisherCameraDevices();
+    RefreshPublisherAudioDevices();
     RefreshPublisherResolutionOptions();
+    UpdatePublisherTargetControls(false);
     UpdatePublisherSourceControls();
     UpdateAudioVolumeLabels();
     UpdatePublisherSourceSummary();
@@ -3988,6 +4021,20 @@ void StreamCoreDemoQtWindow::RefreshPublisherAudioDevices()
     const bool needs_devices =
         audio_index == kPublisherAudioMicrophone ||
         audio_index == kPublisherAudioSystem;
+    if (source_kind != STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO)
+    {
+        streamcore_capture_source_info_t system_sources[8] = {};
+        size_t system_source_count = 0;
+        publisher_system_audio_available_ =
+            streamcore_capture_copy_source_list(
+                STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO,
+                system_sources,
+                sizeof(system_sources) / sizeof(system_sources[0]),
+                &system_source_count,
+                nullptr,
+                0) == STREAMCORE_RESULT_OK &&
+            system_source_count > 0;
+    }
     const QSignalBlocker blocker(publisher_audio_source_combo_);
     const QString previous_id =
         publisher_audio_source_combo_->currentData().toString();
@@ -4006,6 +4053,11 @@ void StreamCoreDemoQtWindow::RefreshPublisherAudioDevices()
         &source_count,
         nullptr,
         0);
+    if (source_kind == STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO)
+    {
+        publisher_system_audio_available_ =
+            result == STREAMCORE_RESULT_OK && source_count > 0;
+    }
     int default_index = -1;
     if (result == STREAMCORE_RESULT_OK)
     {
@@ -4361,15 +4413,6 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
         audio_index == kPublisherAudioSystem;
     const bool needs_audio_file = audio_index == kPublisherAudioFile;
 
-    if (uses_device_combo)
-    {
-        RefreshPublisherCameraDevices();
-    }
-    if (needs_audio_device)
-    {
-        RefreshPublisherAudioDevices();
-    }
-
     publisher_video_detail_row_->setVisible(uses_device_combo || is_source_file);
     publisher_camera_device_combo_->setVisible(uses_device_combo);
     publisher_camera_device_combo_->setEnabled(uses_device_combo);
@@ -4426,7 +4469,6 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceControls()
             publisher_processed_preview_column_->hide();
         }
     }
-    UpdatePublisherTargetControls(false);
     publisher_preview_toggle_->setEnabled(CurrentPublisherSelectionSupportsPreview());
 
     publisher_audio_file_label_->setVisible(needs_audio_file);
@@ -5550,17 +5592,7 @@ void StreamCoreDemoQtWindow::UpdatePublisherSourceSummary()
         .startsWith(QString::fromUtf8("rtmp://"), Qt::CaseInsensitive);
     QString file_processing;
     bool show_passthrough_preview_notice = false;
-    streamcore_capture_source_info_t system_audio_sources[8] = {};
-    size_t system_audio_count = 0;
-    const bool system_audio_available =
-        streamcore_capture_copy_source_list(
-            STREAMCORE_CAPTURE_SOURCE_KIND_SYSTEM_AUDIO,
-            system_audio_sources,
-            sizeof(system_audio_sources) / sizeof(system_audio_sources[0]),
-            &system_audio_count,
-            nullptr,
-            0) == STREAMCORE_RESULT_OK &&
-        system_audio_count > 0;
+    const bool system_audio_available = publisher_system_audio_available_;
 
     const QSignalBlocker blocker(publisher_audio_combo_);
     const bool audio_none_enabled = true;
@@ -7883,8 +7915,6 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
                 {
                     publisher_source_combo_->setCurrentIndex(0);
                 }
-                RefreshPublisherCameraDevices();
-                RefreshPublisherResolutionOptions();
             }
             const QString media_path =
                 EnvironmentText("STREAMCORE_DEMO_QT_PUBLISHER_FILE");

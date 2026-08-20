@@ -54,6 +54,10 @@
   <ItemGroup>
     <Compile Include="MainForm.cs" />
     <Compile Include="Program.cs" />
+    <Content Include="..\..\license\demo\streamcore_demo_winforms.lic">
+      <Link>license\demo\streamcore_demo_winforms.lic</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup Condition="Exists('$(StreamCoreSdkBinary)')">

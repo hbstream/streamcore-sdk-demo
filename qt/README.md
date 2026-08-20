@@ -14,7 +14,7 @@ Publisher 页面还提供异步 Capture Processor 示例：勾选处理前后对
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取目标平台 SDK 包，解压到当前目录下的 `sdk/<platform_arch>/`。例如：
+从 [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2) 获取与目标平台匹配、文件名以 `streamcore_demo_sdk_1.6.2_` 开头的 Demo SDK 构建包，先用同一 Release 的 `SHA256SUMS.txt` 校验，再解压到当前目录下的 `sdk/<platform_arch>/`。正式 SDK 包与 Demo 授权域不同，构建会明确拒绝。示例：
 
 ```text
 sdk/
@@ -27,7 +27,7 @@ sdk/
     lib/libstreamcore_sdk.so
 ```
 
-公开源码仓库不包含 SDK 二进制和正式授权文件。可运行的桌面 Demo 可从仓库的 [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest) 下载。
+公开源码仓库不包含 SDK 二进制或正式授权。仓库内只保留绑定固定 Demo 进程或 Bundle ID 的加密 Demo 授权；可运行的桌面 Demo 和源码构建所需的 Demo SDK 包均可从仓库的 [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest) 下载。
 
 ## 编译
 
@@ -45,10 +45,10 @@ cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/linux_x86_64
 cmake --build build --config Release --target streamcore_demo_qt -j
 ```
 
-macOS：
+macOS（当前发布包为 Intel x86_64）：
 
 ```bash
-cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/macos_arm64
+cmake -S . -B build -DSTREAMCORE_DEMO_SDK_PACKAGE_ROOT=sdk/macos_x86_64
 cmake --build build --config Release --target streamcore_demo_qt -j
 open build/streamcore_demo_qt.app
 ```

@@ -10,13 +10,13 @@ The Player page explicitly selects Media URL or WHEP; it never guesses the proto
 
 ## Prepare the SDK
 
-Download the Android SDK package from the [HBRun Download Center](https://hbrun.com/en/downloads/) and place the AAR at:
+Download `streamcore_demo_sdk_1.6.2_android_multi.aar` from the [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2), verify it with `SHA256SUMS.txt` from the same release, rename it, and place it at:
 
 ```text
 app/libs/streamcore-sdk.aar
 ```
 
-The public source repository does not contain the AAR or a production license. Runnable demo packages are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
+The public source repository does not contain the AAR or a production license. It includes only the encrypted license bound to the default Demo package name. A production AAR belongs to a different trust domain and cannot replace the Demo AAR above. Runnable demo packages are available from the repository [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest).
 
 ## Build
 

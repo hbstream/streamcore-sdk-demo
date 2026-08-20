@@ -10,13 +10,13 @@ Player 页通过“来源类型”显式选择媒体 URL 或 WHEP，不根据地
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 Android SDK 包，将 AAR 放入：
+从 [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2) 下载 `streamcore_demo_sdk_1.6.2_android_multi.aar`，用同一 Release 的 `SHA256SUMS.txt` 校验后，将其重命名并放入：
 
 ```text
 app/libs/streamcore-sdk.aar
 ```
 
-公开源码仓库不包含 AAR 和正式授权文件。可运行的 Demo 包可从仓库的 [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest) 下载。
+公开源码仓库不包含 AAR 或正式授权，只保留绑定默认 Demo 包名的加密授权。正式 AAR 与 Demo 授权域不同，不能替代上述 Demo AAR。可运行的 Demo 包也可从仓库的 [Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest) 下载。
 
 ## 编译
 

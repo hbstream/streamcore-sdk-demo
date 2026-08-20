@@ -106,6 +106,48 @@ if (STREAMCORE_DEMO_SDK_PACKAGE_ROOT
     endif()
 endif()
 
+# Demo 授权使用独立的 product/envelope 域。仅凭头文件和库名无法区分 generic
+# 与 Demo SDK，因此必须在配置期校验包清单，避免到客户首次启动时才暴露
+# license_secret_missing 或 product mismatch。
+set(streamcore_demo_sdk_manifest
+    "${STREAMCORE_DEMO_SDK_PACKAGE_ROOT}/manifest.json")
+if (NOT EXISTS "${streamcore_demo_sdk_manifest}")
+    message(FATAL_ERROR
+        "StreamCore Demo requires an SDK package with manifest.json: "
+        "${STREAMCORE_DEMO_SDK_PACKAGE_ROOT}")
+endif()
+file(READ "${streamcore_demo_sdk_manifest}" streamcore_demo_sdk_manifest_json)
+string(JSON streamcore_demo_sdk_version
+    GET "${streamcore_demo_sdk_manifest_json}" version)
+string(JSON streamcore_demo_sdk_build_label
+    GET "${streamcore_demo_sdk_manifest_json}" build_label)
+string(JSON streamcore_demo_sdk_release_flavor
+    GET "${streamcore_demo_sdk_manifest_json}" metadata release_flavor)
+string(JSON streamcore_demo_sdk_demo_only
+    GET "${streamcore_demo_sdk_manifest_json}" metadata demo_only)
+string(JSON streamcore_demo_sdk_expected_product
+    GET "${streamcore_demo_sdk_manifest_json}" metadata expected_product)
+if (NOT streamcore_demo_sdk_version STREQUAL "1.6.2"
+        OR NOT streamcore_demo_sdk_build_label STREQUAL "demo"
+        OR NOT streamcore_demo_sdk_release_flavor STREQUAL "demo"
+        OR NOT streamcore_demo_sdk_demo_only STREQUAL "true"
+        OR NOT streamcore_demo_sdk_expected_product STREQUAL "streamcore_demo")
+    message(FATAL_ERROR
+        "StreamCore Demo requires the 1.6.2 demo-only SDK package; "
+        "generic, stale, or cross-product SDK packages are not accepted.")
+endif()
+file(SHA256 "${streamcore_demo_sdk_manifest}"
+    streamcore_demo_sdk_manifest_sha256)
+set(streamcore_demo_sdk_provenance_template
+    "${CMAKE_CURRENT_BINARY_DIR}/streamcore_demo_sdk_provenance.json")
+file(WRITE "${streamcore_demo_sdk_provenance_template}"
+    "{\n"
+    "  \"schema\": \"streamcore-demo-sdk-provenance.v1\",\n"
+    "  \"sdk_version\": \"${streamcore_demo_sdk_version}\",\n"
+    "  \"sdk_build_label\": \"${streamcore_demo_sdk_build_label}\",\n"
+    "  \"sdk_manifest_sha256\": \"${streamcore_demo_sdk_manifest_sha256}\"\n"
+    "}\n")
+
 add_library(hbr_streamcore_sdk SHARED IMPORTED GLOBAL)
 set_target_properties(hbr_streamcore_sdk
     PROPERTIES
@@ -422,12 +464,29 @@ function(streamcore_demo_deploy_shared_libraries target)
 endfunction()
 
 function(streamcore_demo_deploy_license_resources target licenseFile)
+    if (APPLE)
+        # macOS 会把 Contents/MacOS 下的普通文件视为未签名代码子组件；授权属于
+        # bundle 资源，必须在最终签名前写入 Resources，不能与可执行文件混放。
+        set(streamcore_demo_license_destination
+            "$<TARGET_BUNDLE_DIR:${target}>/Contents/Resources/license/demo")
+    else()
+        set(streamcore_demo_license_destination
+            "$<TARGET_FILE_DIR:${target}>/license/demo")
+    endif()
     add_custom_command(TARGET ${target} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
-            "$<TARGET_FILE_DIR:${target}>/license/demo"
+            "${streamcore_demo_license_destination}"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${streamcore_demo_license_root}/${licenseFile}"
-            "$<TARGET_FILE_DIR:${target}>/license/demo/${licenseFile}")
+            "${streamcore_demo_license_destination}/${licenseFile}")
+endfunction()
+
+# 该文件只供 staging 判断可执行文件是否确实针对当前 Demo SDK 重建，不进入公开包。
+function(streamcore_demo_deploy_sdk_provenance target)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${streamcore_demo_sdk_provenance_template}"
+            "$<TARGET_FILE_DIR:${target}>/${target}.sdk-provenance.json")
 endfunction()
 
 function(streamcore_demo_codesign_apple_bundle target)
@@ -462,6 +521,14 @@ function(streamcore_demo_codesign_apple_bundle target)
                     --sign "${STREAMCORE_DEMO_APPLE_CODE_SIGN_IDENTITY}"
                     --timestamp=none
                     ${streamcore_demo_codesign_args}
+                    "$<TARGET_BUNDLE_DIR:${target}>"
+                # 构建阶段必须验证部署后的最终 bundle；不能让打包脚本传播一个
+                # 顶层看似有签名、实际含未签名子组件的 App。
+                COMMAND "${STREAMCORE_DEMO_CODESIGN_EXECUTABLE}"
+                    --verify
+                    --deep
+                    --strict
+                    --verbose=2
                     "$<TARGET_BUNDLE_DIR:${target}>")
         endif()
     endif()
@@ -514,6 +581,7 @@ function(streamcore_demo_configure_sdk_consumer target licenseFile)
     streamcore_demo_configure_linux_runpath(${target})
     streamcore_demo_deploy_shared_libraries(${target})
     streamcore_demo_deploy_license_resources(${target} "${licenseFile}")
+    streamcore_demo_deploy_sdk_provenance(${target})
 endfunction()
 
 if (STREAMCORE_DEMO_BUILD_CLI)

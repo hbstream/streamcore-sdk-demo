@@ -10,13 +10,13 @@ The Player page explicitly selects Media URL or WHEP. WHEP mode provides a maske
 
 ## Prepare the SDK
 
-Download the iOS SDK from the [HBRun Download Center](https://hbrun.com/en/downloads/) and place the XCFramework at:
+Download `streamcore_demo_sdk_1.6.2_ios_arm64.tgz` from the [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2), or use the matching simulator archive when building only for the Simulator. Verify it with `SHA256SUMS.txt` from the same release, extract it, and place the XCFramework at:
 
 ```text
 Frameworks/StreamCoreSDK.xcframework
 ```
 
-The public source repository does not contain the XCFramework or a production license. iOS apps must be signed in Xcode before installation on a physical device.
+The public source repository does not contain the XCFramework or a production license. It includes only the encrypted license bound to the default Demo bundle identifier. A production XCFramework belongs to a different trust domain and cannot replace the Demo SDK above. iOS apps must be signed in Xcode before installation on a physical device.
 
 ## Generate the Xcode Project
 

@@ -10,13 +10,13 @@ Player 页通过分段控件显式选择媒体 URL 或 WHEP。WHEP 模式提供�
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 iOS SDK，将 XCFramework 放入：
+从 [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2) 获取 `streamcore_demo_sdk_1.6.2_ios_arm64.tgz`；仅构建模拟器时获取对应 simulator 包。用同一 Release 的 `SHA256SUMS.txt` 校验并解压后，将 XCFramework 放入：
 
 ```text
 Frameworks/StreamCoreSDK.xcframework
 ```
 
-公开源码仓库不包含 XCFramework 和正式授权文件。iOS 应用需要在 Xcode 中完成签名后安装到真机；源码可直接用于创建或集成 App Target。
+公开源码仓库不包含 XCFramework 或正式授权，只保留绑定默认 Demo Bundle ID 的加密授权。正式 XCFramework 与 Demo 授权域不同，不能替代上述 Demo SDK。iOS 应用需要在 Xcode 中完成签名后安装到真机；源码可直接用于创建或集成 App Target。
 
 ## 生成 Xcode 工程
 

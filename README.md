@@ -27,7 +27,7 @@ Runnable demos, SDK packages, and codec add-ons are available from the official 
 - [Latest StreamCore SDK Release](https://github.com/hbstream/hbrun-downloads/releases?q=streamcore-sdk&expanded=true)
 - [Runnable Demo Releases](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 
-Each platform README lists its build requirements and SDK package location. SDK binaries and production license files are distributed separately from this public source repository.
+Each platform README links to the matching Demo SDK build package and shows its exact placement. The repository includes only encrypted licenses bound to the fixed Demo identities. It does not include SDK binaries or production license files, and production SDK packages are intentionally not accepted by these Demo projects.
 
 ### Demo License
 
@@ -55,7 +55,7 @@ Runnable demo packages include a license bound to the matching demo process or a
 - [最新 StreamCore SDK Release](https://github.com/hbstream/hbrun-downloads/releases?q=streamcore-sdk&expanded=true)
 - [演示程序 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/latest)
 
-各平台目录的 README 提供构建要求和 SDK 放置位置。公开源码仓库不包含 SDK 二进制和正式授权文件。
+各平台目录的 README 提供匹配的 Demo SDK 构建包、校验入口和准确放置位置。仓库只携带绑定固定 Demo 身份的加密授权，不包含 SDK 二进制或正式授权；这些 Demo 工程也会明确拒绝正式 SDK 包，避免混用授权域。
 
 ### Demo 授权
 

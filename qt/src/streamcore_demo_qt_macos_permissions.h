@@ -15,6 +15,8 @@
 // Configures the process-wide runtime through the public Apple wrapper so the
 // SDK collects the Bundle ID from the current .app. The Qt snapshot must reuse
 // that runtime instead of overwriting it with identity-free native C config.
+// Relative license paths are resolved below NSBundle.resourcePath; package
+// resources must never be read from the executable-code directory.
 streamcore_result_t StreamCoreDemoQtConfigureMacRuntime(
     const char* configuredLicensePath,
     char* message,

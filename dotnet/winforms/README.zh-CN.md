@@ -10,13 +10,15 @@ Player 页通过来源下拉框显式选择媒体 URL 或 WHEP。WHEP 模式提�
 
 ## 准备 SDK
 
-从 [HBRun 下载中心](https://hbrun.cn/downloads/) 获取 .NET SDK 包，并按 NuGet 布局解压到：
+从 [Demo 1.6.2 Release](https://github.com/hbstream/streamcore-sdk-demo/releases/tag/v1.6.2) 获取 `StreamCore.Demo.Sdk.1.6.2.nupkg`，用同一 Release 的 `SHA256SUMS.txt` 校验后按 ZIP 解压，并将内容放到：
 
 ```text
 packages/StreamCore.Sdk/
   lib/net451/StreamCore.Sdk.dll
   runtimes/win-x64/native/streamcore_sdk.dll
 ```
+
+公开源码只携带绑定 WinForms Demo 进程的加密授权，不包含正式授权。正式 NuGet 包与 Demo 授权域不同，不能替代上述 Demo 包。
 
 ## 编译
 
