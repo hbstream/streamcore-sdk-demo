@@ -15,7 +15,7 @@ Qt Demo 在原有标签页之外提供独立的“AI特效接入演示”页，�
 ### Processor 模块接入
 
 1. 本仓库只包含 SDK Processor 宿主、二进制帧 Worker 和无额外依赖的黑白基线；美颜、换脸、形体变形算法、模型和样片在独立的可选模块包中。源码构建无需安装 Python、OpenCV 或模型。打开该页但未安装效果包时，仍可用本地文件或摄像头验证黑白 Processor 链路。
-2. 页面在未安装效果包时提供获取提示。Windows 效果扩展包解压后，`processor_pack/` 与 `runtime/python/` 应位于 Qt 可执行文件同级；重启后页面读取 `processor_pack/manifest.json`，列出效果和对应样片、参考图与强度控件。开发时也可用 `STREAMCORE_DEMO_QT_PROCESSOR_PACK` 指定清单文件。选择效果后，帧仍经过相同的 SDK Capture Processor 和可选 Publisher 路径。
+2. 未安装效果包时，页面提示[联系 HBRun 获取 AI 特效扩展包](https://hbrun.cn/about/?topic=streamcore-ai-effects#contact)。完整扩展包可提供美颜、换脸和身形调整，不设官网公开下载地址；旧版 `1.6.3-demo.2` 二进制仍显示历史基础包链接，该基础包不含换脸。Windows 扩展包解压后，`processor_pack/` 与 `runtime/python/` 应位于 Qt 可执行文件同级；重启后页面读取 `processor_pack/manifest.json`，列出效果和对应样片、参考图与强度控件。开发时也可用 `STREAMCORE_DEMO_QT_PROCESSOR_PACK` 指定清单文件。选择效果后，帧仍经过相同的 SDK Capture Processor 和可选 Publisher 路径。
 3. 自定义算法可参考 [`processors/example_invert.py`](processors/example_invert.py)：实现 `create_processor()`，返回接收并返回同尺寸 `uint8`、`H×W×4` BGRA 帧的可调用对象。模型在工厂中加载一次。运行时可使用模块包内嵌的 Python/NumPy/OpenCV，或用 `STREAMCORE_DEMO_QT_PROCESSOR_PYTHON` 指定 Python；这是运行依赖，不进入 Qt 源码编译依赖。
 4. 勾选推流时填写 RTMP 地址；只需双预览时可不勾选。视频文件和内置样片如果带音轨，推流自动使用该音轨；摄像头可另外勾选默认麦克风。SDK 的单个 `MEDIA_FILE` Capture 不混入独立麦克风，因此文件输入时麦克风选项禁用；音视频推流采用 H.264/AAC，预览不采集音频。Demo 用 `--probe` 预检 Python 和模块。外部 Worker 失败或超过截止时间时，SDK 按本页设置丢弃该处理帧并记录计数；内置黑白路径使用透传回退。自动化入口为 `STREAMCORE_DEMO_QT_AUTORUN=processor`，效果、来源、文件、摄像头设备和推流地址分别可由 `STREAMCORE_DEMO_QT_PROCESSOR_EFFECT`、`...SOURCE`、`...FILE`、`...CAMERA_ID`、`...URL` 设定；`...MICROPHONE=1` 在摄像头推流时勾选默认麦克风。
 

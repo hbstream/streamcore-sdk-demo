@@ -29,7 +29,7 @@ Runnable demos, SDK packages, and codec add-ons are available from the official 
 
 Each platform README links to the matching Demo SDK build package and shows its exact placement. The repository includes only encrypted licenses bound to the fixed Demo identities. It does not include SDK binaries or production license files, and production SDK packages are intentionally not accepted by these Demo projects.
 
-The Windows Qt Demo is available as `1.6.3-demo.1` with its matching restricted `streamcore_sdk/demo` SDK build and optional base effects archive. The previously published `1.6.2` packages for other platforms remain at their listed versions and checksums. Face-swap weights are excluded from public downloads.
+The current Windows Qt Demo is `1.6.3-demo.3` and uses the restricted `streamcore_sdk/demo` SDK build `1.6.3-demo.1` for source builds. Its built-in monochrome Processor works without an extension. To try beauty, HyperSwap/ArcFace face swap, or body shaping, [contact HBRun](https://hbrun.com/en/about/?topic=streamcore-ai-effects#contact) for the separate AI effects extension; the complete extension has no public download link. The earlier base effects archive remains only as a historical release asset and does not include face swap. The previously published `1.6.2` packages for other platforms retain their listed versions and checksums.
 
 ### Demo License
 
@@ -59,7 +59,7 @@ Runnable demo packages include a license bound to the matching demo process or a
 
 各平台目录的 README 提供匹配的 Demo SDK 构建包、校验入口和准确放置位置。仓库只携带绑定固定 Demo 身份的加密授权，不包含 SDK 二进制或正式授权；这些 Demo 工程也会明确拒绝正式 SDK 包，避免混用授权域。
 
-Windows Qt Demo 新增 `1.6.3-demo.1`，配套受限的 `streamcore_sdk/demo` SDK 构建包和可选基础效果扩展包；其他平台已发布的 `1.6.2` 附件保持原版本与哈希。换脸模型权重不进入公开下载。
+当前 Windows Qt Demo 为 `1.6.3-demo.3`；源码构建使用受限的 `streamcore_sdk/demo` SDK `1.6.3-demo.1`。内置黑白 Processor 无需扩展包即可运行。体验美颜、HyperSwap/ArcFace 换脸或身形调整，请[联系 HBRun 获取独立 AI 特效扩展包](https://hbrun.cn/about/?topic=streamcore-ai-effects#contact)；完整包不提供公开下载地址。历史 Release 保留的基础效果包不含换脸，其他平台已发布的 `1.6.2` 附件保持原版本与哈希。
 
 ### Demo 授权
 

@@ -299,8 +299,8 @@ ProcessorDemoPage::ProcessorDemoPage(bool chinese, QWidget* parent)
     status_label_->setWordWrap(true);
     status_label_->setMinimumHeight(26);
     pack_hint_label_ = new QLabel(Tr(
-        "Only monochrome processing is built in. <a href=\"https://github.com/hbstream/streamcore-sdk-demo/releases/download/v1.6.3-demo.1/streamcore_processor_effects_base_1.0_windows_x64.zip\">Download the optional base effects pack</a> for beauty and waist/hip effects; extract its processor_pack/ and runtime/python/ folders beside this executable, then restart.",
-        "当前仅内置黑白处理。<a href=\"https://gitee.com/hbstream/streamcore-sdk-demo/releases/download/v1.6.3-demo.1/streamcore_processor_effects_base_1.0_windows_x64.zip\">下载可选基础效果包</a>，将包内 processor_pack/ 和 runtime/python/ 文件夹解压到本程序目录并重启，即可使用美颜和腰臀调整。"), this);
+        "Only monochrome processing is built in. <a href=\"https://hbrun.com/en/about/?topic=streamcore-ai-effects#contact\">Contact HBRun for the optional AI effects extension</a> to try beauty, face swap, and body shaping. Extract its processor_pack/ and runtime/python/ folders beside this executable, then restart.",
+        "当前仅内置黑白处理。体验美颜、换脸和身形调整，请<a href=\"https://hbrun.cn/about/?topic=streamcore-ai-effects#contact\">联系 HBRun 获取 AI 特效扩展包</a>。将包内 processor_pack/ 和 runtime/python/ 文件夹解压到本程序目录，重启后即可使用。"), this);
     pack_hint_label_->setWordWrap(true);
     pack_hint_label_->setOpenExternalLinks(true);
     pack_hint_label_->setStyleSheet(QString::fromUtf8(
