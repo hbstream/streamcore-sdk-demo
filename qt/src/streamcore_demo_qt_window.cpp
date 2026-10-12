@@ -4,6 +4,7 @@
 // it owns the visible controls, native SDK session handles, autorun entrypoints,
 // and the preview/status text policy used by Windows, Linux, and macOS Qt builds.
 #include "streamcore_demo_qt_window.h"
+#include "processor_demo_page.h"
 
 #if defined(Q_OS_MACOS)
 #include "streamcore_demo_qt_macos_permissions.h"
@@ -1714,7 +1715,8 @@ void StreamCoreDemoQtWindow::BuildUi()
     const int kDesktopConfigPaneWidth = kSidebarWidth;
     QLabel* logo_label = new QLabel(page);
     QLabel* brand_contact_label = new QLabel(
-        UiText("Publisher / Player / GB28181 / License", "推流 / 播放 / GB28181 / 授权"),
+        UiText("Demo-only build. Not for production or redistribution.",
+            "演示专用，不得用于生产或再分发。"),
         page);
     QTabWidget* feature_tabs = new QTabWidget(page);
     feature_tabs->setObjectName(QString::fromUtf8("feature_tabs"));
@@ -3885,6 +3887,10 @@ void StreamCoreDemoQtWindow::BuildUi()
     feature_tabs->addTab(gb28181_page, QString::fromUtf8("GB28181"));
     feature_tabs->addTab(license_page, UiText("License", "授权"));
     feature_tabs->addTab(logs_page, UiText("Diagnostics", "诊断"));
+    feature_tabs->addTab(
+        new ProcessorDemoPage(UiText("en", "zh") == QString::fromUtf8("zh"),
+            feature_tabs),
+        UiText("AI Effects Integration Demo", "AI特效接入演示"));
     page_layout->setContentsMargins(0, 0, 0, 0);
     page_layout->setSpacing(0);
     page_layout->addWidget(overview_box);
@@ -7705,6 +7711,7 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
         autorun_mode != QString::fromUtf8("upload") &&
         autorun_mode != QString::fromUtf8("permissions") &&
         autorun_mode != QString::fromUtf8("publisher") &&
+        autorun_mode != QString::fromUtf8("processor") &&
         autorun_mode != QString::fromUtf8("onvif") &&
         autorun_mode != QString::fromUtf8("gb28181"))
     {
@@ -7737,6 +7744,20 @@ void StreamCoreDemoQtWindow::ScheduleAutorunIfRequested()
             findChild<QTabWidget*>(QString::fromUtf8("feature_tabs"));
         const int quit_after_ms =
             EnvironmentInt("STREAMCORE_DEMO_QT_AUTORUN_QUIT_MS", 0);
+
+        if (mode == QString::fromUtf8("processor"))
+        {
+            if (feature_tabs != nullptr) feature_tabs->setCurrentIndex(5);
+            auto* processor_page = dynamic_cast<ProcessorDemoPage*>(
+                findChild<QWidget*>(QString::fromUtf8("processor_page")));
+            if (processor_page != nullptr)
+            {
+                processor_page->StartFromEnvironment();
+                if (quit_after_ms > 0)
+                    ScheduleAutorunQuit(quit_after_ms, mode);
+            }
+            return;
+        }
 
         if (mode == QString::fromUtf8("diagnostics") ||
             mode == QString::fromUtf8("logs"))
@@ -8417,6 +8438,12 @@ void StreamCoreDemoQtWindow::ScheduleAutorunQuit(
         if (normalized_mode == QString::fromUtf8("publisher"))
         {
             StopPublisher();
+        }
+        else if (normalized_mode == QString::fromUtf8("processor"))
+        {
+            auto* processor_page = dynamic_cast<ProcessorDemoPage*>(
+                findChild<QWidget*>(QString::fromUtf8("processor_page")));
+            if (processor_page != nullptr) processor_page->Stop();
         }
         else if (normalized_mode == QString::fromUtf8("gb28181"))
         {

@@ -32,6 +32,8 @@ DerivedData/
 *.lib
 *.a
 *.pdb
+*.pyc
+__pycache__/
 *.dmp
 
 # Secrets and local licenses

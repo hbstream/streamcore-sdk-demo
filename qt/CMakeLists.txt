@@ -27,7 +27,7 @@ if (MSVC)
 endif()
 
 set(streamcore_demo_cli_default ON)
-if (APPLE)
+if (APPLE OR WIN32)
     # macOS 正式校验绑定 Bundle ID 与 Team ID；无 bundle 身份的 CLI 不能用
     # GUI Demo 授权伪装通过，因此 Apple 默认不构建该辅助程序。
     set(streamcore_demo_cli_default OFF)
@@ -40,6 +40,8 @@ option(STREAMCORE_DEMO_ENABLE_GB28181
     "Enable GB28181 demo code when the packaged SDK exposes the public runtime" OFF)
 option(STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_PACKAGE_ROOT
     "Allow STREAMCORE_DEMO_SDK_PACKAGE_ROOT to point outside this demo tree for local development only" OFF)
+set(STREAMCORE_DEMO_DEV_LICENSE_ROOT "" CACHE PATH
+    "Local development only: directory containing a test Demo license")
 set(STREAMCORE_DEMO_SDK_PACKAGE_ROOT ""
     CACHE PATH "Extracted StreamCore SDK package root, such as sdk/windows_x86_64")
 set(STREAMCORE_DEMO_RUNTIME_DEPENDENCY_DIRS ""
@@ -106,9 +108,9 @@ if (STREAMCORE_DEMO_SDK_PACKAGE_ROOT
     endif()
 endif()
 
-# Demo 授权使用独立的 product/envelope 域。仅凭头文件和库名无法区分 generic
-# 与 Demo SDK，因此必须在配置期校验包清单，避免到客户首次启动时才暴露
-# license_secret_missing 或 product mismatch。
+# 包清单决定授权域。1.6.2 已发布包保留旧身份；Windows 新包使用
+# streamcore_sdk/demo 独立凭据。仅凭头文件和库名无法区分这些包，故在配置期
+# 拒绝正式版、跨产品和版本不匹配的 SDK。
 set(streamcore_demo_sdk_manifest
     "${STREAMCORE_DEMO_SDK_PACKAGE_ROOT}/manifest.json")
 if (NOT EXISTS "${streamcore_demo_sdk_manifest}")
@@ -127,14 +129,32 @@ string(JSON streamcore_demo_sdk_demo_only
     GET "${streamcore_demo_sdk_manifest_json}" metadata demo_only)
 string(JSON streamcore_demo_sdk_expected_product
     GET "${streamcore_demo_sdk_manifest_json}" metadata expected_product)
-if (NOT streamcore_demo_sdk_version STREQUAL "1.6.2"
-        OR NOT streamcore_demo_sdk_build_label STREQUAL "demo"
-        OR NOT streamcore_demo_sdk_release_flavor STREQUAL "demo"
-        OR NOT streamcore_demo_sdk_demo_only STREQUAL "true"
-        OR NOT streamcore_demo_sdk_expected_product STREQUAL "streamcore_demo")
+set(streamcore_demo_sdk_legacy_identity OFF)
+set(streamcore_demo_sdk_current_identity OFF)
+if (streamcore_demo_sdk_version STREQUAL "1.6.2"
+        AND streamcore_demo_sdk_build_label STREQUAL "demo"
+        AND streamcore_demo_sdk_release_flavor STREQUAL "demo"
+        AND streamcore_demo_sdk_demo_only STREQUAL "true"
+        AND streamcore_demo_sdk_expected_product STREQUAL "streamcore_demo")
+    set(streamcore_demo_sdk_legacy_identity ON)
+elseif (WIN32
+        AND streamcore_demo_sdk_version STREQUAL "1.6.3-demo.1"
+        AND streamcore_demo_sdk_build_label STREQUAL "demo_sdk"
+        AND streamcore_demo_sdk_release_flavor STREQUAL "demo_sdk"
+        AND streamcore_demo_sdk_demo_only STREQUAL "true"
+        AND streamcore_demo_sdk_expected_product STREQUAL "streamcore_sdk")
+    set(streamcore_demo_sdk_current_identity ON)
+endif()
+if (NOT streamcore_demo_sdk_legacy_identity
+        AND NOT streamcore_demo_sdk_current_identity)
     message(FATAL_ERROR
-        "StreamCore Demo requires the 1.6.2 demo-only SDK package; "
+        "StreamCore Demo requires a supported demo-only SDK package; "
         "generic, stale, or cross-product SDK packages are not accepted.")
+endif()
+if (streamcore_demo_sdk_current_identity AND STREAMCORE_DEMO_BUILD_CLI)
+    message(FATAL_ERROR
+        "The streamcore_sdk/demo license is bound to streamcore_demo_qt.exe; "
+        "set STREAMCORE_DEMO_BUILD_CLI=OFF for this package.")
 endif()
 file(SHA256 "${streamcore_demo_sdk_manifest}"
     streamcore_demo_sdk_manifest_sha256)
@@ -279,9 +299,21 @@ endif()
 set(streamcore_demo_asset_root "${CMAKE_CURRENT_LIST_DIR}/assets")
 
 set(streamcore_demo_license_root "${CMAKE_CURRENT_LIST_DIR}/license/demo")
+if (STREAMCORE_DEMO_DEV_LICENSE_ROOT)
+    if (NOT STREAMCORE_DEMO_ALLOW_EXTERNAL_SDK_PACKAGE_ROOT)
+        message(FATAL_ERROR
+            "STREAMCORE_DEMO_DEV_LICENSE_ROOT requires the local-development "
+            "external SDK package option; release builds use repository licenses.")
+    endif()
+    set(streamcore_demo_license_root "${STREAMCORE_DEMO_DEV_LICENSE_ROOT}")
+endif()
 
 if (WIN32)
-    set(streamcore_demo_qt_license_file "streamcore_demo_qt.lic")
+    if (streamcore_demo_sdk_current_identity)
+        set(streamcore_demo_qt_license_file "streamcore_demo_qt_sdk_demo.lic")
+    else()
+        set(streamcore_demo_qt_license_file "streamcore_demo_qt.lic")
+    endif()
     set(streamcore_demo_cli_license_file "streamcore_demo_cli.lic")
 elseif (APPLE)
     set(streamcore_demo_qt_license_file "streamcore_demo_qt_macos.lic")
@@ -594,6 +626,8 @@ if (STREAMCORE_DEMO_BUILD_CLI)
 endif()
 
 if (STREAMCORE_DEMO_BUILD_QT_GUI)
+    set(STREAMCORE_DEMO_QT_PROCESSOR_INCLUDED ON CACHE INTERNAL
+        "The Qt Demo includes the Capture Processor effects page")
     if (DEFINED ENV{QTDIR} AND NOT "$ENV{QTDIR}" STREQUAL "")
         list(PREPEND CMAKE_PREFIX_PATH "$ENV{QTDIR}")
     endif()
@@ -606,6 +640,10 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
     set(streamcore_demo_qt_sources
         src/streamcore_demo_qt_main.cpp
         src/streamcore_demo_qt_window.cpp
+        src/processor_demo_page.cpp
+        src/processor_effect_catalog.cpp
+        src/processor_frame_adapter.cpp
+        src/processor_worker_bridge.cpp
         ${streamcore_demo_snapshot_sources})
     if (WIN32)
         list(APPEND streamcore_demo_qt_sources
@@ -617,6 +655,20 @@ if (STREAMCORE_DEMO_BUILD_QT_GUI)
 
     add_executable(streamcore_demo_qt
         ${streamcore_demo_qt_sources})
+    if (streamcore_demo_sdk_legacy_identity)
+        # Frozen 1.6.2 media-file frames need the narrowly scoped RGB32 workaround.
+        target_compile_definitions(streamcore_demo_qt PRIVATE
+            STREAMCORE_DEMO_LEGACY_MEDIA_RGB32=1)
+    endif()
+    add_custom_target(streamcore_demo_qt_processor_assets
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:streamcore_demo_qt>/processors"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_LIST_DIR}/processors/frame_worker.py"
+            "${CMAKE_CURRENT_LIST_DIR}/processors/example_invert.py"
+            "$<TARGET_FILE_DIR:streamcore_demo_qt>/processors"
+        VERBATIM)
+    add_dependencies(streamcore_demo_qt streamcore_demo_qt_processor_assets)
     if (WIN32)
         string(REPLACE "\\" "\\\\"
             streamcore_demo_icon_path_rc
